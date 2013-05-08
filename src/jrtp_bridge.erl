@@ -63,7 +63,7 @@ json_provider(Req, State) ->
         S -> list_to_integer(binary_to_list(S))
     end,
     {LongPoll, _} = cowboy_req:header(<<"x-long-poll">>, Req),
-    {Vres, JiffyTree} = case LongPoll of 
+    {Vres, Tree} = case LongPoll of 
         undefined -> 
             hub:deltas(Vreq, Path);
         _AnyOtherValue -> 
@@ -76,7 +76,7 @@ json_provider(Req, State) ->
     %% encode the response version and tree
     BVer = list_to_binary(integer_to_list(Vres)),
     Req2 = cowboy_req:set_resp_header(<<"X-Version">>, BVer, Req),
-    Body = jiffy:encode(JiffyTree),
+    Body = jsx:encode(Tree),
     {<<Body/binary, <<"\n">>/binary>>, Req2, State}.
 
 html_provider(Req, State) ->
@@ -104,7 +104,7 @@ content_types_accepted(Req, State) ->
 
 json_acceptor(Req, State) ->
     {ok, RequestBody, _} = cowboy_req:body(Req),
-    ProposedChanges = jsx:decode(RequestBody),
+    ProposedChanges = jsx:decode(RequestBody, [relax]),
 	{changes, Vres, Changes} = hub:update(request_path(Req), ProposedChanges),
     ChangeJson = jsx:encode(Changes),
     ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
