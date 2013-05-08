@@ -31,6 +31,8 @@
 -export([content_types_accepted/2]).
 -export([json_acceptor/2]).
 
+-export([json_to_erl/1, erl_to_json/1]).
+
 init(_Transport, _Req, []) ->
     {upgrade, protocol, cowboy_rest}.
 
@@ -76,7 +78,7 @@ json_provider(Req, State) ->
     %% encode the response version and tree
     BVer = list_to_binary(integer_to_list(Vres)),
     Req2 = cowboy_req:set_resp_header(<<"X-Version">>, BVer, Req),
-    Body = jsx:encode(Tree),
+    Body = erl_to_json(Tree),
     {<<Body/binary, <<"\n">>/binary>>, Req2, State}.
 
 html_provider(Req, State) ->
@@ -104,9 +106,9 @@ content_types_accepted(Req, State) ->
 
 json_acceptor(Req, State) ->
     {ok, RequestBody, _} = cowboy_req:body(Req),
-    ProposedChanges = jsx:decode(RequestBody, [relax]),
+    ProposedChanges = json_to_erl(RequestBody),
 	{changes, Vres, Changes} = hub:update(request_path(Req), ProposedChanges),
-    ChangeJson = jsx:encode(Changes),
+    ChangeJson = erl_to_json(Changes),
     ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
     BVer = list_to_binary(integer_to_list(Vres)),
     Req2 = cowboy_req:set_resp_header(<<"X-Version">>, BVer, Req),
@@ -138,4 +140,31 @@ wait_for_version_after(Vreq, Path) -> % {Vres, ChangeTree}
             end;
         {Vres, ChangeTree} -> {Vres, ChangeTree}
     end.    
+
+erl_to_json(Term) ->
+    Fn = fun(X) when is_atom(X) -> 
+	BinX = atom_to_binary(X, utf8), 
+	<< <<"#">>/binary, BinX/binary>>;
+    (X) -> 
+	X
+    end,
+    jsx:encode(Term, [ {space, 1}, {indent, 2}, {pre_encode, Fn}]) .
+
+json_to_erl(Json) ->
+    Fn = fun(X) when is_binary(X) -> 
+	atomize(X);
+    (X) -> 
+	X
+    end,
+    case jsx:decode(Json, [relax, {labels, atom}, {post_decode, Fn}]) of
+	{incomplete, CompletionFn} -> throw(error);
+	Erl -> Erl
+    end.
+
+atomize(<< H:1/binary, B/binary>>) -> 
+    case H of 
+	<<"#">> -> binary_to_atom(B, utf8);
+	_ -> <<H/binary, B/binary>>
+    end;
+atomize(X) -> X.
 
