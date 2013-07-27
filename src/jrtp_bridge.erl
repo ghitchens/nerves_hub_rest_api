@@ -36,7 +36,7 @@
 init(_Transport, _Req, []) ->
     {upgrade, protocol, cowboy_rest}.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%% cowboy REST helpers %%%%%%%%%%%%%%%%%%%%%%%%%%%%%$$%
+%%%%%%%%%%%%%%%%%%%%%%%%%% cowboy REST helpers %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % does the point specified in the URL currently exist on the hub?
 resource_exists(Req, State) ->
@@ -77,7 +77,7 @@ json_provider(Req, State) ->
 
     %% encode the response version and tree
     BVer = list_to_binary(integer_to_list(Vres)),
-    Req2 = cowboy_req:set_resp_header(<<"X-Version">>, BVer, Req),
+    Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req),
     Body = erl_to_json(Tree),
     {<<Body/binary, <<"\n">>/binary>>, Req2, State}.
 
@@ -111,7 +111,7 @@ json_acceptor(Req, State) ->
     ChangeJson = erl_to_json(Changes),
     ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
     BVer = list_to_binary(integer_to_list(Vres)),
-    Req2 = cowboy_req:set_resp_header(<<"X-Version">>, BVer, Req),
+    Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req),
     Req3 = cowboy_req:set_resp_body(ResponseBody, Req2),
     {true, Req3, State}.
 
