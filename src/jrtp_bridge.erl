@@ -3,8 +3,8 @@
 %% Supports the REST methodology to access points on the hub, using JSON as
 %% the notation of the state. 
 %%
-%% GET /a/point	      Maps to hub:deltas	
-%% PUT /a/point	      Maps to hub:update
+%% GET /a/point       Maps to hub:deltas        
+%% PUT /a/point       Maps to hub:update
 %%
 %% LICENSE
 %%
@@ -40,22 +40,22 @@ init(_Transport, _Req, []) ->
 
 % does the point specified in the URL currently exist on the hub?
 resource_exists(Req, State) ->
-	case hub:fetch(request_path(Req)) of 
-	  {_, error} -> {false, Req, State };
-	  {_, _} -> {true, Req, State}
-	end.
+        case hub:fetch(request_path(Req)) of 
+          {_, error} -> {false, Req, State };
+          {_, _} -> {true, Req, State}
+        end.
 
 allowed_methods(Req, State) ->
-	{[<<"GET">>, <<"PUT">>], Req, State}.
+        {[<<"GET">>, <<"PUT">>], Req, State}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% providers (respond to GET) %%%%%%%%%%%%%%%%%%%%%%%%%
 
 content_types_provided(Req, State) -> 
-	{[  
-		{<<"application/json">>, json_provider},
-		{<<"text/html">>, html_provider},
-		{<<"text/plain">>, text_provider}
-	], Req, State}.
+        {[  
+                {<<"application/json">>, json_provider},
+                {<<"text/html">>, html_provider},
+                {<<"text/plain">>, text_provider}
+        ], Req, State}.
 
 json_provider(Req, State) ->
     Path= request_path(Req),
@@ -88,10 +88,10 @@ html_provider(Req, State) ->
                 [{<<"Location">>, <<"/admin/index.html">>}], Req),
             {ok, Reply, State};
         _Else ->
-			Header= <<"<html><head><meta charset=\"utf-8\"><title>NNI-212</title></head><body><pre>">>,
-			Footer= <<"</pre></body></html>">>,
+                        Header= <<"<html><head><meta charset=\"utf-8\"><title>NNI-212</title></head><body><pre>">>,
+                        Footer= <<"</pre></body></html>">>,
             {Body, Reply, NewState} = json_provider(Req, State),
-			{<<Header/binary, Body/binary, Footer/binary>>, Reply, NewState}
+                        {<<Header/binary, Body/binary, Footer/binary>>, Reply, NewState}
     end.
 
 text_provider(Req, State) ->
@@ -100,14 +100,14 @@ text_provider(Req, State) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%% acceptors (respond to PUT) %%%%%%%%%%%%%%%%%%%%%%%%%
 
 content_types_accepted(Req, State) ->
-	{[
-		{{<<"application">>, <<"json">>, []}, json_acceptor}
-	], Req, State}.
+        {[
+                {{<<"application">>, <<"json">>, []}, json_acceptor}
+        ], Req, State}.
 
 json_acceptor(Req, State) ->
     {ok, RequestBody, _} = cowboy_req:body(Req),
     ProposedChanges = json_to_erl(RequestBody),
-	{changes, Vres, Changes} = hub:update(request_path(Req), ProposedChanges),
+        {changes, Vres, Changes} = hub:update(request_path(Req), ProposedChanges),
     ChangeJson = erl_to_json(Changes),
     ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
     BVer = list_to_binary(integer_to_list(Vres)),
@@ -122,8 +122,8 @@ json_acceptor(Req, State) ->
 %% returns the path of the request as a list of binary tokens, like this:
 %% /config/device_info -> [<<"config">>, <<"device_info">>]
 %%
-%% REVIEW:	Could likely be rewritten to avoid binary_to_list and list_to
-%%			binary conversions, improving performance.
+%% REVIEW:      Could likely be rewritten to avoid binary_to_list and list_to
+%%                      binary conversions, improving performance.
 
 request_path(Req) ->
     {RequestPath, _} = cowboy_req:path(Req),
@@ -143,28 +143,28 @@ wait_for_version_after(Vreq, Path) -> % {Vres, ChangeTree}
 
 erl_to_json(Term) ->
     Fn = fun(X) when is_atom(X) -> 
-	BinX = atom_to_binary(X, utf8), 
-	<< <<"#">>/binary, BinX/binary>>;
+        BinX = atom_to_binary(X, utf8), 
+        << <<"#">>/binary, BinX/binary>>;
     (X) -> 
-	X
+        X
     end,
     jsx:encode(Term, [ {space, 1}, {indent, 2}, {pre_encode, Fn}]) .
 
 json_to_erl(Json) ->
     Fn = fun(X) when is_binary(X) -> 
-	atomize(X);
+        atomize(X);
     (X) -> 
-	X
+        X
     end,
     case jsx:decode(Json, [relax, {labels, atom}, {post_decode, Fn}]) of
-	{incomplete, CompletionFn} -> throw(error);
-	Erl -> Erl
+        {incomplete, _CompletionFn} -> throw(error);
+        Erl -> Erl
     end.
 
 atomize(<< H:1/binary, B/binary>>) -> 
     case H of 
-	<<"#">> -> binary_to_atom(B, utf8);
-	_ -> <<H/binary, B/binary>>
+        <<"#">> -> binary_to_atom(B, utf8);
+        _ -> <<H/binary, B/binary>>
     end;
 atomize(X) -> X.
 
