@@ -85,7 +85,7 @@ html_provider(Req, State) ->
     case request_path(Req) of
         [] ->  %% redirect to the /admin/index.html file for root requests
             {ok, Reply} = cowboy_req:reply(302, 
-                [{<<"Location">>, <<"/admin/index.html">>}], Req),
+                [{<<"Location">>, <<"/panel/index.html">>}], Req),
             {ok, Reply, State};
         _Else ->
                         Header= <<"<html><head><meta charset=\"utf-8\"><title>NNI-212</title></head><body><pre>">>,
