@@ -143,8 +143,8 @@ wait_for_version_after(Vreq, Path) -> % {Vres, ChangeTree}
 
 erl_to_json(Term) ->
     Fn = fun(X) when is_atom(X) -> 
-        BinX = atom_to_binary(X, utf8), 
-        << <<"#">>/binary, BinX/binary>>;
+        atom_to_binary(X, utf8); 
+%%        << <<"#">>/binary, BinX/binary>>;
     (X) -> 
         X
     end,
