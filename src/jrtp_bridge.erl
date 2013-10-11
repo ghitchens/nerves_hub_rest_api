@@ -58,8 +58,8 @@ content_types_provided(Req, State) ->
 
 json_provider(Req, State) ->
     Path= request_path(Req),
-    {SinceVersion, _} = cowboy_req:header(<<"x-since-version">>, Req),
-    Vreq = vheader_to_ver(SinceVersion),
+    {VersHeader, _} = cowboy_req:header(<<"x-since-version">>, Req),
+    Vreq = vheader_to_ver(VersHeader),
     {LongPoll, _} = cowboy_req:header(<<"x-long-poll">>, Req),
     {Vres, Tree} = case LongPoll of 
         undefined -> 
@@ -71,11 +71,23 @@ json_provider(Req, State) ->
             R
     end,
 
-    %% encode the response version and tree
+    %% encode the response version and tree.   If we were not modified, 
+    %% send NOT MODIFIED response
     Req2 = cowboy_req:set_resp_header(<<"x-version">>, 
-	      ver_to_vheader(Vres), Req),
-    Body = erl_to_json(Tree),
-    {<<Body/binary, <<"\n">>/binary>>, Req2, State}.
+                                      ver_to_vheader(Vres), Req),
+    ConditionalGet = (Vreq > 0),
+    case {ConditionalGet, Tree} of 
+        {true, []} -> %% conditional, but nothing modified, respond with 304
+            %% {<< <<"">>/binary>>, Req2, State};
+            {ok, Req3} = cowboy_req:reply(304, [], Req2),
+            {halt, Req3, State};
+            %%{<< <<"\n">>/binary>>, cowboy_req:reply(304, [] Req2), State};
+        {false, []} -> %% unconditional, but empty
+            {<< <<"">>/binary>>, Req2, State};
+        _ -> %% we have a real response
+            Body = erl_to_json(Tree),
+            {<<Body/binary, <<"\n">>/binary>>, Req2, State}
+    end.
 
 html_provider(Req, State) ->
     case request_path(Req) of
@@ -106,10 +118,10 @@ hub_vlock() ->
 % hub versionlock
 vheader_to_ver(VersionHeaderValue) -> 
     String = 'Elixir.String',
-    Vlock = hub_vlock(),
     case VersionHeaderValue of 
         undefined -> 0;
     	S -> 
+            Vlock = hub_vlock(),
             case String:split(S, <<":">>) of 
         	    [Vlock, VS] ->  
                     {V, _} = String:to_integer(VS),
@@ -140,7 +152,6 @@ json_acceptor(Req, State) ->
     ChangeJson = erl_to_json(Changes),
     ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
     BVer = ver_to_vheader(Vres),
-    list_to_binary(integer_to_list(Vres)),
     Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req),
     Req3 = cowboy_req:set_resp_body(ResponseBody, Req2),
     {true, Req3, State}.
@@ -160,15 +171,21 @@ request_path(Req) ->
     Strings = string:tokens(binary_to_list(RequestPath), "/"),
     lists:map(fun(X)->list_to_binary(X) end, Strings).
 
+%% PERF  consider not calling us on every change everywhere in hub
 wait_for_version_after(Vreq, Path) -> % {Vres, ChangeTree}
     case hub:deltas(Vreq, Path) of
         {Vreq, _} -> 
             receive
                 _ -> wait_for_version_after(Vreq, Path)
-            after 30000 -> % 30 second timeout
-                { Vreq, [] }
+            after 30000 -> % 30 second timeout PERF
+                hub:deltas(Vreq, Path)  % force final version on timeout
             end;
-        {Vres, ChangeTree} -> {Vres, ChangeTree}
+        {Vres, []} -> % there were changes, but not in state we care about
+                      % REVIEW PERF SEEMS NEEDED WHICH SEEMS WRONG!
+                      % COULD BE INDICITAVE OF MESSAGE STORM?
+            wait_for_version_after(Vres, Path);
+        {Vres, ChangeTree} -> 
+            {Vres, ChangeTree}
     end.    
 
 erl_to_json(Term) ->
