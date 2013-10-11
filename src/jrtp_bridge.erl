@@ -1,6 +1,6 @@
 %% jrtp_bridge - JSON/REST Transport Protocol Bridge
 %% 
-%% Supports the REST methodology to access points on the hub, using JSON as
+%% Supports the REST methodoy to access points on the hub, using JSON as
 %% the notation of the state. 
 %%
 %% GET /a/point       Maps to hub:deltas        
@@ -19,7 +19,6 @@
 -module(jrtp_bridge).
 
 -export([init/3]).
-
 -export([allowed_methods/2]).
 -export([resource_exists/2]).
 
@@ -60,10 +59,7 @@ content_types_provided(Req, State) ->
 json_provider(Req, State) ->
     Path= request_path(Req),
     {SinceVersion, _} = cowboy_req:header(<<"x-since-version">>, Req),
-    Vreq = case SinceVersion of 
-        undefined -> 0;
-        S -> list_to_integer(binary_to_list(S))
-    end,
+    Vreq = vheader_to_ver(SinceVersion),
     {LongPoll, _} = cowboy_req:header(<<"x-long-poll">>, Req),
     {Vres, Tree} = case LongPoll of 
         undefined -> 
@@ -76,8 +72,8 @@ json_provider(Req, State) ->
     end,
 
     %% encode the response version and tree
-    BVer = list_to_binary(integer_to_list(Vres)),
-    Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req),
+    Req2 = cowboy_req:set_resp_header(<<"x-version">>, 
+	      ver_to_vheader(Vres), Req),
     Body = erl_to_json(Tree),
     {<<Body/binary, <<"\n">>/binary>>, Req2, State}.
 
@@ -97,6 +93,39 @@ html_provider(Req, State) ->
 text_provider(Req, State) ->
     {<<"REST Hello World as text!">>, Req, State}.
 
+% returns the global version lock string as a binary
+% REVIEW: this should do something better in the future than request it from
+% the hub every time.  Perhaps keep it in state in the webserver env.
+hub_vlock() ->
+    {_, SysInfo} = hub:fetch([sys, info]),
+    {ok, Vlock} = orddict:find(vlock, SysInfo),
+    Vlock.
+
+% Given a version header string in the format "VLOCK:VER", return
+% the integer version number, if the version lock matches the current
+% hub versionlock
+vheader_to_ver(VersionHeaderValue) -> 
+    String = 'Elixir.String',
+    Vlock = hub_vlock(),
+    case VersionHeaderValue of 
+        undefined -> 0;
+    	S -> 
+            case String:split(S, <<":">>) of 
+        	    [Vlock, VS] ->  
+                    {V, _} = String:to_integer(VS),
+                    V;
+        	    _ -> 
+                    0  % vlock missing or does not match
+            end
+    end.
+
+% Given an integer version, build a version lock string for a header
+% in the formatin "VLOCK:VER"
+ver_to_vheader(Ver) ->
+    BVer = list_to_binary(integer_to_list(Ver)),
+    Vlock = hub_vlock(),
+    <<Vlock/binary, <<":">>/binary, BVer/binary>>.
+     
 %%%%%%%%%%%%%%%%%%%%%%%%%% acceptors (respond to PUT) %%%%%%%%%%%%%%%%%%%%%%%%%
 
 content_types_accepted(Req, State) ->
@@ -110,7 +139,8 @@ json_acceptor(Req, State) ->
         {changes, Vres, Changes} = hub:update(request_path(Req), ProposedChanges),
     ChangeJson = erl_to_json(Changes),
     ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
-    BVer = list_to_binary(integer_to_list(Vres)),
+    BVer = ver_to_vheader(Vres),
+    list_to_binary(integer_to_list(Vres)),
     Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req),
     Req3 = cowboy_req:set_resp_body(ResponseBody, Req2),
     {true, Req3, State}.
