@@ -56,6 +56,13 @@ content_types_provided(Req, State) ->
                 {<<"text/plain">>, text_provider}
         ], Req, State}.
 
+
+
+st_to_xsession(St) ->
+  [ {hw_key, HwKey} ] = ets:lookup(config, hw_key),
+  base64:encode(crypto:block_encrypt(blowfish_cfb64, 
+	       St, <<00,00,00,00,00,00,00,00>>, HwKey)).
+
 json_provider(Req, State) ->
     Path= request_path(Req),
     {VersHeader, _} = cowboy_req:header(<<"x-since-version">>, Req),
@@ -71,10 +78,16 @@ json_provider(Req, State) ->
             R
     end,
 
-    %% encode the response version and tree.   If we were not modified, 
-    %% send NOT MODIFIED response
-    Req2 = cowboy_req:set_resp_header(<<"x-version">>, 
-                                      ver_to_vheader(Vres), Req),
+    {SetTime, _} = cowboy_req:header(<<"x-set-time">>, Req),
+    Rx = cowboy_req:set_resp_header(<<"x-version">>, 
+				 ver_to_vheader(Vres), Req),
+    Req2 = case SetTime of
+      undefined -> Rx;
+      _Other ->
+	cowboy_req:set_resp_header(<<"x-session">>, 
+		st_to_xsession(SetTime), Rx)
+    end,
+
     ConditionalGet = (Vreq > 0),
     case {ConditionalGet, Tree} of 
         {true, []} -> %% conditional, but nothing modified, respond with 304
