@@ -119,11 +119,8 @@ text_provider(Req, State) ->
     {<<"REST Hello World as text!">>, Req, State}.
 
 % returns the global version lock string as a binary
-% REVIEW: this should do something better in the future than request it from
-% the hub every time.  Perhaps keep it in state in the webserver env.
 hub_vlock() ->
-    {_, SysInfo} = hub:fetch([sys, info]),
-    {ok, Vlock} = orddict:find(vlock, SysInfo),
+    [ {vlock, Vlock} ] = ets:lookup(config, vlock),
     Vlock.
 
 % Given a version header string in the format "VLOCK:VER", return
