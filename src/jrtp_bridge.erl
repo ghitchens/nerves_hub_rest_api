@@ -133,11 +133,8 @@ vheader_to_ver(VersionHeaderValue) ->
     	S -> 
             Vlock = hub_vlock(),
             case String:split(S, <<":">>) of 
-        	    [Vlock, VS] ->  
-                    {V, _} = String:to_integer(VS),
-                    V;
-        	    _ -> 
-                    0  % vlock missing or does not match
+		  [Vlock, VS] ->  binary_to_integer(VS);
+		  _ -> 0  % vlock missing or does not match
             end
     end.
 
