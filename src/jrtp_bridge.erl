@@ -148,9 +148,15 @@ ver_to_vheader(Ver) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%% acceptors (respond to PUT) %%%%%%%%%%%%%%%%%%%%%%%%%
 
 content_types_accepted(Req, State) ->
-        {[
-                {{<<"application">>, <<"json">>, []}, json_acceptor}
-        ], Req, State}.
+    {[
+        {{<<"application">>, <<"json">>, []}, json_acceptor},
+        {{<<"application">>, <<"x-firmware">>, []}, firmware_acceptor}
+    ], Req, State}.
+
+firmware_acceptor(Req, State) -> 
+    {ok, RequestBody, _} = cowboy_req:body(Req),
+    fw_programmer:program(RequestBody, autoupdate, "/dev/sda"),
+    {true, Req, State}.
 
 json_acceptor(Req, State) ->
     {ok, RequestBody, _} = cowboy_req:body(Req),
