@@ -29,6 +29,7 @@
 
 -export([content_types_accepted/2]).
 -export([json_acceptor/2]).
+-export([firmware_acceptor/2]).
 
 -export([json_to_erl/1, erl_to_json/1]).
 
@@ -55,8 +56,6 @@ content_types_provided(Req, State) ->
                 {<<"text/html">>, html_provider},
                 {<<"text/plain">>, text_provider}
         ], Req, State}.
-
-
 
 st_to_xsession(St) ->
   [ {hw_key, HwKey} ] = ets:lookup(config, hw_key),
