@@ -152,16 +152,7 @@ content_types_accepted(Req, State) ->
         {{<<"application">>, <<"x-firmware">>, []}, firmware_acceptor}
     ], Req, State}.
 
-firmware_acceptor(Req, State) -> 
-    {ok, RequestBody, _} = cowboy_req:body(128*1024*1024, Req),
-    Req2 = case 'Elixir.Echo.Firmware':apply_update(RequestBody) of
-        {ok, NewFirmwareVersion} -> 
-            Ra = cowboy_req:set_resp_header(<<"x-new-firmware-version">>, NewFirmwareVersion, Req),
-            Rb = cowboy_req:reply(202, [], Ra);
-        {error, Reason} -> 
-            cowboy_req:reply(400, [], 'Elixir.Kernel':inspect(Reason), Req)
-    end,    
-    {true, Req2, State}.
+firmware_acceptor(Req, State) -> 'Elixir.Echo.Firmware':upload_acceptor(Req, State).
 
 json_acceptor(Req, State) ->
     {ok, RequestBody, _} = cowboy_req:body(Req),
