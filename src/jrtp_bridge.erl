@@ -181,7 +181,9 @@ json_acceptor(Req, State) ->
 %% REVIEW:      Could likely be rewritten to avoid binary_to_list and list_to
 %%                      binary conversions, improving performance.
 
-request_path(Req) -> {RequestPath, _} = cowboy_req:path_info(Req).
+request_path(Req) -> 
+    {Tokens, _} = cowboy_req:path_info(Req),
+    Tokens.
     % {RequestPath, _} = cowboy_req:path(Req),
     % Strings = string:tokens(binary_to_list(RequestPath), "/"),
     % lists:map(fun(X)->list_to_binary(X) end, Strings).
