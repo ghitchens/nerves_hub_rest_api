@@ -181,10 +181,10 @@ json_acceptor(Req, State) ->
 %% REVIEW:      Could likely be rewritten to avoid binary_to_list and list_to
 %%                      binary conversions, improving performance.
 
-request_path(Req) ->
-    {RequestPath, _} = cowboy_req:path(Req),
-    Strings = string:tokens(binary_to_list(RequestPath), "/"),
-    lists:map(fun(X)->list_to_binary(X) end, Strings).
+request_path(Req) -> {RequestPath, _} = cowboy_req:path_info(Req).
+    % {RequestPath, _} = cowboy_req:path(Req),
+    % Strings = string:tokens(binary_to_list(RequestPath), "/"),
+    % lists:map(fun(X)->list_to_binary(X) end, Strings).
 
 %% PERF  consider not calling us on every change everywhere in hub
 wait_for_version_after(Vreq, Path) -> % {Vres, ChangeTree}
