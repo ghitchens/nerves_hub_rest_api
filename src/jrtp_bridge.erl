@@ -152,18 +152,24 @@ content_types_accepted(Req, State) ->
         {{<<"application">>, <<"x-firmware">>, []}, firmware_acceptor}
     ], Req, State}.
 
-firmware_acceptor(Req, State) -> 'Elixir.Echo.Firmware':upload_acceptor(Req, State).
+firmware_acceptor(Req, State) -> 
+    'Elixir.Echo.Firmware':upload_acceptor(Req, State).
 
 json_acceptor(Req, State) ->
     {ok, RequestBody, _} = cowboy_req:body(Req),
     ProposedChanges = json_to_erl(RequestBody),
-        {changes, Vres, Changes} = hub:update(request_path(Req), ProposedChanges),
-    ChangeJson = erl_to_json(Changes),
-    ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
-    BVer = ver_to_vheader(Vres),
-    Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req),
-    Req3 = cowboy_req:set_resp_body(ResponseBody, Req2),
-    {true, Req3, State}.
+    case hub:request(request_path(Req), ProposedChanges) of
+        {changes, Vres, Changes} ->
+            ChangeJson = erl_to_json(Changes),
+            ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
+            BVer = ver_to_vheader(Vres),
+            Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req),
+            Req3 = cowboy_req:set_resp_body(ResponseBody, Req2),
+            {true, Req3, State};
+        _ -> 
+            {ok, Req3} = cowboy_req:reply(400, [], Req),
+            {halt, Req3, State}
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% utility functionss %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
