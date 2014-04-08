@@ -159,7 +159,7 @@ json_acceptor(Req, State) ->
     {ok, RequestBody, _} = cowboy_req:body(Req),
     ProposedChanges = json_to_erl(RequestBody),
     case hub:request(request_path(Req), ProposedChanges) of
-        {changes, Vres, Changes} ->
+        {changes, {Vres, Changes}} ->
             ChangeJson = erl_to_json(Changes),
             ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
             BVer = ver_to_vheader(Vres),
