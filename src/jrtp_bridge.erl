@@ -29,6 +29,7 @@
 
 -export([content_types_accepted/2]).
 -export([json_acceptor/2]).
+-export([firmware_acceptor/2]).
 
 -export([json_to_erl/1, erl_to_json/1]).
 
@@ -55,8 +56,6 @@ content_types_provided(Req, State) ->
                 {<<"text/html">>, html_provider},
                 {<<"text/plain">>, text_provider}
         ], Req, State}.
-
-
 
 st_to_xsession(St) ->
   [ {hw_key, HwKey} ] = ets:lookup(config, hw_key),
@@ -148,20 +147,29 @@ ver_to_vheader(Ver) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%% acceptors (respond to PUT) %%%%%%%%%%%%%%%%%%%%%%%%%
 
 content_types_accepted(Req, State) ->
-        {[
-                {{<<"application">>, <<"json">>, []}, json_acceptor}
-        ], Req, State}.
+    {[
+        {{<<"application">>, <<"json">>, []}, json_acceptor},
+        {{<<"application">>, <<"x-firmware">>, []}, firmware_acceptor}
+    ], Req, State}.
+
+firmware_acceptor(Req, State) -> 
+    'Elixir.Echo.Firmware':upload_acceptor(Req, State).
 
 json_acceptor(Req, State) ->
     {ok, RequestBody, _} = cowboy_req:body(Req),
     ProposedChanges = json_to_erl(RequestBody),
-        {changes, Vres, Changes} = hub:update(request_path(Req), ProposedChanges),
-    ChangeJson = erl_to_json(Changes),
-    ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
-    BVer = ver_to_vheader(Vres),
-    Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req),
-    Req3 = cowboy_req:set_resp_body(ResponseBody, Req2),
-    {true, Req3, State}.
+    case hub:request(request_path(Req), ProposedChanges) of
+        {changes, Vres, Changes} ->
+            ChangeJson = erl_to_json(Changes),
+            ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
+            BVer = ver_to_vheader(Vres),
+            Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req),
+            Req3 = cowboy_req:set_resp_body(ResponseBody, Req2),
+            {true, Req3, State};
+        _ -> 
+            {ok, Req3} = cowboy_req:reply(400, [], Req),
+            {halt, Req3, State}
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% utility functionss %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -173,10 +181,12 @@ json_acceptor(Req, State) ->
 %% REVIEW:      Could likely be rewritten to avoid binary_to_list and list_to
 %%                      binary conversions, improving performance.
 
-request_path(Req) ->
-    {RequestPath, _} = cowboy_req:path(Req),
-    Strings = string:tokens(binary_to_list(RequestPath), "/"),
-    lists:map(fun(X)->list_to_binary(X) end, Strings).
+request_path(Req) -> 
+    {Tokens, _} = cowboy_req:path_info(Req),
+    Tokens.
+    % {RequestPath, _} = cowboy_req:path(Req),
+    % Strings = string:tokens(binary_to_list(RequestPath), "/"),
+    % lists:map(fun(X)->list_to_binary(X) end, Strings).
 
 %% PERF  consider not calling us on every change everywhere in hub
 wait_for_version_after(Vreq, Path) -> % {Vres, ChangeTree}
