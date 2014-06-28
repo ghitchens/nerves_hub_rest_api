@@ -9,7 +9,7 @@
 %% LICENSE
 %%
 %% Repurposed from RemoteRadio, Copyright © 1996-2012 Garth Hitchens, KG7GA,
-%% and Echo, Copyright © 2012-2013 Garth Hitchens, All Rights Reserved
+%% and Telo, Copyright © 2012-2013 Garth Hitchens, All Rights Reserved
 %% 
 %% License explicitly granted to Rose Point Navigation Systems, LLC, for use 
 %% in the NEMO network translator box.   For other uses contact the Author.
@@ -153,7 +153,7 @@ content_types_accepted(Req, State) ->
     ], Req, State}.
 
 firmware_acceptor(Req, State) -> 
-    'Elixir.Echo.Firmware':upload_acceptor(Req, State).
+    'Elixir.Telo.Firmware':upload_acceptor(Req, State).
 
 json_acceptor(Req, State) ->
     {ok, RequestBody, _} = cowboy_req:body(Req),
