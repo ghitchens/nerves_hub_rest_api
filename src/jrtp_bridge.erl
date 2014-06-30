@@ -117,31 +117,22 @@ html_provider(Req, State) ->
 text_provider(Req, State) ->
     {<<"REST Hello World as text!">>, Req, State}.
 
-% returns the global version lock string as a binary
-hub_vlock() ->
-    [ {vlock, Vlock} ] = ets:lookup(config, vlock),
-    Vlock.
-
 % Given a version header string in the format "VLOCK:VER", return
-% the integer version number, if the version lock matches the current
-% hub versionlock
+% the version tuple that corresponds to that, for passing on to the hub
 vheader_to_ver(VersionHeaderValue) -> 
-    String = 'Elixir.String',
     case VersionHeaderValue of 
-        undefined -> 0;
+        undefined -> {undefined, 0};
     	S -> 
-            Vlock = hub_vlock(),
-            case String:split(S, <<":">>) of 
-		  [Vlock, VS] ->  binary_to_integer(VS);
-		  _ -> 0  % vlock missing or does not match
+            case 'Elixir.String':split(S, <<":">>) of 
+		  [Vlock, VS] ->  {Vlock, binary_to_integer(VS)};
+		  _ -> {undefined, 0}  % vlock missing or does not match
             end
     end.
 
 % Given an integer version, build a version lock string for a header
 % in the formatin "VLOCK:VER"
-ver_to_vheader(Ver) ->
+ver_to_vheader({Vlock, Ver}) ->
     BVer = list_to_binary(integer_to_list(Ver)),
-    Vlock = hub_vlock(),
     <<Vlock/binary, <<":">>/binary, BVer/binary>>.
      
 %%%%%%%%%%%%%%%%%%%%%%%%%% acceptors (respond to PUT) %%%%%%%%%%%%%%%%%%%%%%%%%
