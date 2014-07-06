@@ -198,8 +198,7 @@ wait_for_version_after(Vreq, Path) -> % {Vres, ChangeTree}
 
 erl_to_json(Term) ->
     Fn = fun(X) when is_atom(X) -> 
-        atom_to_binary(X, utf8); 
-%%        << <<"#">>/binary, BinX/binary>>;
+	deatomize(X);
     (X) -> 
         X
     end,
@@ -216,10 +215,29 @@ json_to_erl(Json) ->
         Erl -> Erl
     end.
 
+% atomize
+%
+% convert binary to atoms, if they're preceded by hash marks.
+% REVIEW: code to do this in reverse is commented out, do we still need this?
+
 atomize(<< H:1/binary, B/binary>>) -> 
     case H of 
         <<"#">> -> binary_to_atom(B, utf8);
         _ -> <<H/binary, B/binary>>
     end;
 atomize(X) -> X.
+
+% deatomize
+% 
+% convert an atom to binary, unless it's true, false or nil, or not an atom,
+% in which case we leave it alone
+
+deatomize(A) when is_atom(A) ->
+    case A of
+      true -> true;
+      false -> false;
+      null -> null;
+      OtherAtom -> atom_to_binary(OtherAtom, utf8) % was << <<"#">>/binary, BinX/binary>>;
+    end;
+deatomize(A) -> A.
 
