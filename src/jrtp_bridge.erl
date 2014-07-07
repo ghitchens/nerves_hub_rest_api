@@ -159,7 +159,7 @@ json_acceptor(Req, State) ->
             {true, Req3, State};
         ok ->  % async response
             {ok, Req3} = cowboy_req:reply(202, [], Req),
-            {true, Req3, State};
+            {halt, Req3, State};
         _ -> 
             {ok, Req3} = cowboy_req:reply(400, [], Req),
             {halt, Req3, State}
