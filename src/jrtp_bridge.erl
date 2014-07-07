@@ -157,6 +157,9 @@ json_acceptor(Req, State) ->
             Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req),
             Req3 = cowboy_req:set_resp_body(ResponseBody, Req2),
             {true, Req3, State};
+        ok ->  % async response
+            {ok, Req3} = cowboy_req:reply(202, [], Req),
+            {true, Req3, State};
         _ -> 
             {ok, Req3} = cowboy_req:reply(400, [], Req),
             {halt, Req3, State}
