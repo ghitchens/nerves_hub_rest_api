@@ -64,9 +64,9 @@ st_to_xsession(St) ->
 
 json_provider(Req, State) ->
     Path= request_path(Req),
-    {VersHeader, _} = cowboy_req:header(<<"x-since-version">>, Req),
+    {VersHeader, R2} = cowboy_req:header(<<"x-since-version">>, Req),
     Vreq = vheader_to_ver(VersHeader),
-    {LongPoll, _} = cowboy_req:header(<<"x-long-poll">>, Req),
+    {LongPoll, R3} = cowboy_req:header(<<"x-long-poll">>, R2),
     {Vres, Tree} = case LongPoll of 
         undefined -> 
             hub:deltas(Vreq, Path);
@@ -77,9 +77,9 @@ json_provider(Req, State) ->
             R
     end,
 
-    {SetTime, _} = cowboy_req:header(<<"x-set-time">>, Req),
+    {SetTime, R4} = cowboy_req:header(<<"x-set-time">>, R3),
     Rx = cowboy_req:set_resp_header(<<"x-version">>, 
-				 ver_to_vheader(Vres), Req),
+				 ver_to_vheader(Vres), R4),
     Req2 = case SetTime of
       undefined -> Rx;
       _Other ->
@@ -147,21 +147,21 @@ firmware_acceptor(Req, State) ->
     'Elixir.Telo.Firmware':upload_acceptor(Req, State).
 
 json_acceptor(Req, State) ->
-    {ok, RequestBody, _} = cowboy_req:body(Req),
+    {ok, RequestBody, Req1} = cowboy_req:body(Req),
     ProposedChanges = json_to_erl(RequestBody),
-    case hub:request(request_path(Req), ProposedChanges) of
+    case hub:request(request_path(Req1), ProposedChanges) of
         {changes, Vres, Changes} ->
             ChangeJson = erl_to_json(Changes),
             ResponseBody = <<ChangeJson/binary, <<"\n">>/binary>>,
             BVer = ver_to_vheader(Vres),
-            Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req),
+            Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req1),
             Req3 = cowboy_req:set_resp_body(ResponseBody, Req2),
             {true, Req3, State};
         ok ->  % async response
-            {ok, Req3} = cowboy_req:reply(202, [], Req),
+            {ok, Req3} = cowboy_req:reply(202, [], Req1),
             {halt, Req3, State};
         _ -> 
-            {ok, Req3} = cowboy_req:reply(400, [], Req),
+            {ok, Req3} = cowboy_req:reply(400, [], Req1),
             {halt, Req3, State}
     end.
 
