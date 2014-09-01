@@ -144,7 +144,7 @@ content_types_accepted(Req, State) ->
     ], Req, State}.
 
 firmware_acceptor(Req, State) -> 
-    'Elixir.Telo.Firmware':upload_acceptor(Req, State).
+    'Elixir.Echo.Embedded.Firmware':upload_acceptor(Req, State).
 
 json_acceptor(Req, State) ->
     {ok, RequestBody, Req1} = cowboy_req:body(Req),
