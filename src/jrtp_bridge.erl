@@ -64,7 +64,7 @@ st_to_xsession(St) ->
 
 connect_led_pinger() ->
     'Elixir.Echo.Hardware.Led':ping(client),
-    timer:sleep(250),
+    timer:sleep(1000),
     connect_led_pinger().
 
 json_provider(Req, State) ->
