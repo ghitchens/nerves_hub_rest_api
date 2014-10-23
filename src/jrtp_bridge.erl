@@ -62,6 +62,11 @@ st_to_xsession(St) ->
   base64:encode(crypto:block_encrypt(blowfish_cfb64, 
 	       St, <<00,00,00,00,00,00,00,00>>, HwKey)).
 
+connect_led_pinger() ->
+    'Elixir.Echo.Hardware.Led':ping(client),
+    timer:sleep(250),
+    connect_led_pinger().
+
 json_provider(Req, State) ->
     Path= request_path(Req),
     {VersHeader, R2} = cowboy_req:header(<<"x-since-version">>, Req),
@@ -71,9 +76,11 @@ json_provider(Req, State) ->
         undefined -> 
             hub:deltas(Vreq, Path);
         _AnyOtherValue -> 
+            LedPingerProcess = spawn(fun connect_led_pinger/0),
             hub:watch(Path,[]),
             R = wait_for_version_after(Vreq, Path),
             hub:unwatch(Path),
+            exit(LedPingerProcess, disconnected),
             R
     end,
 
