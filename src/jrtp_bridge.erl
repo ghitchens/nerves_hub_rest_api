@@ -62,8 +62,11 @@ st_to_xsession(St) ->
   base64:encode(crypto:block_encrypt(blowfish_cfb64, 
 	       St, <<00,00,00,00,00,00,00,00>>, HwKey)).
 
+% keep the client led turned on as long as a client is connected.  Do this by
+% sending alive every second the connection lives with a timeout of 5 seconds.
+% when the connection dies, the process that owns this function is killed.
 connect_led_pinger() ->
-    'Elixir.Echo.Hardware.Led':ping(client),
+    'Elixir.Echo.Hardware.Led':alive(client,5000),
     timer:sleep(1000),
     connect_led_pinger().
 
