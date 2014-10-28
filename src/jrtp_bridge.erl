@@ -23,11 +23,13 @@
 -export([resource_exists/2]).
 
 -export([content_types_provided/2]).
+-export([rfc7386_provider/2]).
 -export([json_provider/2]).
 -export([html_provider/2]).
 -export([text_provider/2]).
 
 -export([content_types_accepted/2]).
+-export([rfc7386_acceptor/2]).
 -export([json_acceptor/2]).
 -export([firmware_acceptor/2]).
 
@@ -52,9 +54,10 @@ allowed_methods(Req, State) ->
 
 content_types_provided(Req, State) -> 
         {[  
-                {<<"application/json">>, json_provider},
-                {<<"text/html">>, html_provider},
-                {<<"text/plain">>, text_provider}
+            {<<"application/merge-patch+json">>, rfc7386_provider},
+            {<<"application/json">>, json_provider},
+            {<<"text/html">>, html_provider},
+            {<<"text/plain">>, text_provider}
         ], Req, State}.
 
 st_to_xsession(St) ->
@@ -70,7 +73,7 @@ connect_led_pinger() ->
     timer:sleep(1000),
     connect_led_pinger().
 
-json_provider(Req, State) ->
+rfc7386_provider(Req, State) ->
     Path= request_path(Req),
     {VersHeader, R2} = cowboy_req:header(<<"x-since-version">>, Req),
     Vreq = vheader_to_ver(VersHeader),
@@ -107,6 +110,26 @@ json_provider(Req, State) ->
         {false, []} -> %% unconditional, but empty
             {<< <<"">>/binary>>, Req2, State};
         _ -> %% we have a real response
+            Body = erl_to_json(Tree),
+            {<<Body/binary, <<"\n">>/binary>>, Req2, State}
+    end.
+
+
+json_provider(Req, State) ->
+    Path= request_path(Req),
+    {Vres, Tree} = hub:deltas({undefined, 0}, Path),
+    {SetTime, R4} = cowboy_req:header(<<"x-set-time">>, Req),
+    Rx = cowboy_req:set_resp_header(<<"x-version">>, 
+				 ver_to_vheader(Vres), R4),
+    Req2 = case SetTime of
+      undefined -> Rx;
+      _Other ->
+	cowboy_req:set_resp_header(<<"x-session">>, 
+		st_to_xsession(SetTime), Rx)
+    end,
+    case Tree of 
+        [] -> {<< <<"">>/binary>>, Req2, State};
+        _ ->
             Body = erl_to_json(Tree),
             {<<Body/binary, <<"\n">>/binary>>, Req2, State}
     end.
@@ -149,6 +172,7 @@ ver_to_vheader({Vlock, Ver}) ->
 
 content_types_accepted(Req, State) ->
     {[
+        {{<<"application">>, <<"merge-patch+json">>, []}, rfc7386_acceptor},
         {{<<"application">>, <<"json">>, []}, json_acceptor},
         {{<<"application">>, <<"x-firmware">>, []}, firmware_acceptor}
     ], Req, State}.
@@ -156,6 +180,9 @@ content_types_accepted(Req, State) ->
 firmware_acceptor(Req, State) -> 
     'Elixir.Echo.Hardware.Firmware':upload_acceptor(Req, State).
 
+rfc7386_acceptor(Req, State) ->
+    json_acceptor(Req, State).
+    
 json_acceptor(Req, State) ->
     {ok, RequestBody, Req1} = cowboy_req:body(Req),
     ProposedChanges = json_to_erl(RequestBody),
