@@ -141,7 +141,7 @@ html_provider(Req, State) ->
                 [{<<"Location">>, <<"/panel/index.html">>}], Req),
             {ok, Reply, State};
         _Else ->
-                        Header= <<"<html><head><meta charset=\"utf-8\"><title>NNI-212</title></head><body><pre>">>,
+                        Header= <<"<html><head><meta charset=\"utf-8\"><title>Rose Point Commercial Radar Interface</title></head><body><pre>">>,
                         Footer= <<"</pre></body></html>">>,
             {Body, Reply, NewState} = json_provider(Req, State),
                         {<<Header/binary, Body/binary, Footer/binary>>, Reply, NewState}
