@@ -90,6 +90,9 @@ rfc7386_provider(Req, State) ->
             R
     end,
 
+    {VlockReq, _} = Vreq,
+    {VlockRes, _} = Vres,
+
     {SetTime, R4} = cowboy_req:header(<<"x-set-time">>, R3),
     Rx = cowboy_req:set_resp_header(<<"x-version">>, 
 				 ver_to_vheader(Vres), R4),
@@ -99,19 +102,29 @@ rfc7386_provider(Req, State) ->
 	cowboy_req:set_resp_header(<<"x-session">>, 
 		st_to_xsession(SetTime), Rx)
     end,
-
+    
+    % decide based on whether lock changed whether or not to respond with
+    % application/json or application/xml+json
+    
+    Req2_1 = case VlockRes of
+        VlockReq -> Req2;
+        _ -> cowboy_req:set_resp_header(<<"content-type">>, <<"application/json">>, Req2)
+    end,    
+    
+    % manage correct response to conditional gets
+    
     ConditionalGet = (Vreq > 0),
     case {ConditionalGet, Tree} of 
         {true, []} -> %% conditional, but nothing modified, respond with 304
             %% {<< <<"">>/binary>>, Req2, State};
-            {ok, Req3} = cowboy_req:reply(304, [], Req2),
+            {ok, Req3} = cowboy_req:reply(304, [], Req2_1),
             {halt, Req3, State};
             %%{<< <<"\n">>/binary>>, cowboy_req:reply(304, [] Req2), State};
         {false, []} -> %% unconditional, but empty
-            {<< <<"">>/binary>>, Req2, State};
+            {<< <<"">>/binary>>, Req2_1, State};
         _ -> %% we have a real response
             Body = erl_to_json(Tree),
-            {<<Body/binary, <<"\n">>/binary>>, Req2, State}
+            {<<Body/binary, <<"\n">>/binary>>, Req2_1, State}
     end.
 
 
