@@ -23,11 +23,13 @@
 -export([resource_exists/2]).
 
 -export([content_types_provided/2]).
+-export([rfc7386_provider/2]).
 -export([json_provider/2]).
 -export([html_provider/2]).
 -export([text_provider/2]).
 
 -export([content_types_accepted/2]).
+-export([rfc7386_acceptor/2]).
 -export([json_acceptor/2]).
 -export([firmware_acceptor/2]).
 
@@ -52,9 +54,10 @@ allowed_methods(Req, State) ->
 
 content_types_provided(Req, State) -> 
         {[  
-                {<<"application/json">>, json_provider},
-                {<<"text/html">>, html_provider},
-                {<<"text/plain">>, text_provider}
+            {<<"application/merge-patch+json">>, rfc7386_provider},
+            {<<"application/json">>, json_provider},
+            {<<"text/html">>, html_provider},
+            {<<"text/plain">>, text_provider}
         ], Req, State}.
 
 st_to_xsession(St) ->
@@ -62,7 +65,15 @@ st_to_xsession(St) ->
   base64:encode(crypto:block_encrypt(blowfish_cfb64, 
 	       St, <<00,00,00,00,00,00,00,00>>, HwKey)).
 
-json_provider(Req, State) ->
+% keep the client led turned on as long as a client is connected.  Do this by
+% sending alive every second the connection lives with a timeout of 5 seconds.
+% when the connection dies, the process that owns this function is killed.
+connect_led_pinger() ->
+    'Elixir.Echo.Hardware.Led':alive(client,5000),
+    timer:sleep(1000),
+    connect_led_pinger().
+
+rfc7386_provider(Req, State) ->
     Path= request_path(Req),
     {VersHeader, R2} = cowboy_req:header(<<"x-since-version">>, Req),
     Vreq = vheader_to_ver(VersHeader),
@@ -71,11 +82,16 @@ json_provider(Req, State) ->
         undefined -> 
             hub:deltas(Vreq, Path);
         _AnyOtherValue -> 
+            LedPingerProcess = spawn(fun connect_led_pinger/0),
             hub:watch(Path,[]),
             R = wait_for_version_after(Vreq, Path),
             hub:unwatch(Path),
+            exit(LedPingerProcess, disconnected),
             R
     end,
+
+    {VlockReq, _} = Vreq,
+    {VlockRes, _} = Vres,
 
     {SetTime, R4} = cowboy_req:header(<<"x-set-time">>, R3),
     Rx = cowboy_req:set_resp_header(<<"x-version">>, 
@@ -86,17 +102,47 @@ json_provider(Req, State) ->
 	cowboy_req:set_resp_header(<<"x-session">>, 
 		st_to_xsession(SetTime), Rx)
     end,
-
+    
+    % decide based on whether lock changed whether or not to respond with
+    % application/json or application/xml+json
+    
+    Req2_1 = case VlockRes of
+        VlockReq -> Req2;
+        _ -> cowboy_req:set_resp_header(<<"content-type">>, <<"application/json">>, Req2)
+    end,    
+    
+    % manage correct response to conditional gets
+    
     ConditionalGet = (Vreq > 0),
     case {ConditionalGet, Tree} of 
         {true, []} -> %% conditional, but nothing modified, respond with 304
             %% {<< <<"">>/binary>>, Req2, State};
-            {ok, Req3} = cowboy_req:reply(304, [], Req2),
+            {ok, Req3} = cowboy_req:reply(304, [], Req2_1),
             {halt, Req3, State};
             %%{<< <<"\n">>/binary>>, cowboy_req:reply(304, [] Req2), State};
         {false, []} -> %% unconditional, but empty
-            {<< <<"">>/binary>>, Req2, State};
+            {<< <<"">>/binary>>, Req2_1, State};
         _ -> %% we have a real response
+            Body = erl_to_json(Tree),
+            {<<Body/binary, <<"\n">>/binary>>, Req2_1, State}
+    end.
+
+
+json_provider(Req, State) ->
+    Path= request_path(Req),
+    {Vres, Tree} = hub:deltas({undefined, 0}, Path),
+    {SetTime, R4} = cowboy_req:header(<<"x-set-time">>, Req),
+    Rx = cowboy_req:set_resp_header(<<"x-version">>, 
+				 ver_to_vheader(Vres), R4),
+    Req2 = case SetTime of
+      undefined -> Rx;
+      _Other ->
+	cowboy_req:set_resp_header(<<"x-session">>, 
+		st_to_xsession(SetTime), Rx)
+    end,
+    case Tree of 
+        [] -> {<< <<"">>/binary>>, Req2, State};
+        _ ->
             Body = erl_to_json(Tree),
             {<<Body/binary, <<"\n">>/binary>>, Req2, State}
     end.
@@ -108,7 +154,7 @@ html_provider(Req, State) ->
                 [{<<"Location">>, <<"/panel/index.html">>}], Req),
             {ok, Reply, State};
         _Else ->
-                        Header= <<"<html><head><meta charset=\"utf-8\"><title>NNI-212</title></head><body><pre>">>,
+                        Header= <<"<html><head><meta charset=\"utf-8\"><title>Rose Point Commercial Radar Interface</title></head><body><pre>">>,
                         Footer= <<"</pre></body></html>">>,
             {Body, Reply, NewState} = json_provider(Req, State),
                         {<<Header/binary, Body/binary, Footer/binary>>, Reply, NewState}
@@ -139,6 +185,7 @@ ver_to_vheader({Vlock, Ver}) ->
 
 content_types_accepted(Req, State) ->
     {[
+        {{<<"application">>, <<"merge-patch+json">>, []}, rfc7386_acceptor},
         {{<<"application">>, <<"json">>, []}, json_acceptor},
         {{<<"application">>, <<"x-firmware">>, []}, firmware_acceptor}
     ], Req, State}.
@@ -146,6 +193,9 @@ content_types_accepted(Req, State) ->
 firmware_acceptor(Req, State) -> 
     'Elixir.Echo.Hardware.Firmware':upload_acceptor(Req, State).
 
+rfc7386_acceptor(Req, State) ->
+    json_acceptor(Req, State).
+    
 json_acceptor(Req, State) ->
     {ok, RequestBody, Req1} = cowboy_req:body(Req),
     ProposedChanges = json_to_erl(RequestBody),
