@@ -32,6 +32,7 @@
 -export([rfc7386_acceptor/2]).
 -export([json_acceptor/2]).
 -export([firmware_acceptor/2]).
+-export([device_lock_acceptor/2]).
 
 -export([json_to_erl/1, erl_to_json/1]).
 
@@ -187,11 +188,15 @@ content_types_accepted(Req, State) ->
     {[
         {{<<"application">>, <<"merge-patch+json">>, []}, rfc7386_acceptor},
         {{<<"application">>, <<"json">>, []}, json_acceptor},
-        {{<<"application">>, <<"x-firmware">>, []}, firmware_acceptor}
+        {{<<"application">>, <<"x-firmware">>, []}, firmware_acceptor},
+        {{<<"application">>, <<"x-device-lock">>, []}, device_lock_acceptor}
     ], Req, State}.
 
 firmware_acceptor(Req, State) -> 
     'Elixir.Echo.Hardware.Firmware':upload_acceptor(Req, State).
+
+device_lock_acceptor(Req, State) -> 
+    'Elixir.Echo.Hardware.Firmware':device_lock_acceptor(Req, State).
 
 rfc7386_acceptor(Req, State) ->
     json_acceptor(Req, State).
