@@ -79,13 +79,18 @@ rfc7386_provider(Req, State) ->
     {VersHeader, R2} = cowboy_req:header(<<"x-since-version">>, Req),
     Vreq = vheader_to_ver(VersHeader),
     {LongPoll, R3} = cowboy_req:header(<<"x-long-poll">>, R2),
+    {LongPollTimeoutHeaderValue, R4} = cowboy_req:header(<<"x-long-poll-timeout">>, R3),
+		LongPollTimeout = case LongPollTimeoutHeaderValue of 
+			undefined -> 30000;
+			N -> binary_to_integer(N)
+		end,
     {Vres, Tree} = case LongPoll of 
         undefined -> 
             hub:deltas(Vreq, Path);
         _AnyOtherValue -> 
             LedPingerProcess = spawn(fun connect_led_pinger/0),
             hub:watch(Path,[]),
-            R = wait_for_version_after(Vreq, Path),
+            R = wait_for_version_after(Vreq, Path, LongPollTimeout),
             hub:unwatch(Path),
             exit(LedPingerProcess, disconnected),
             R
@@ -94,9 +99,9 @@ rfc7386_provider(Req, State) ->
     {VlockReq, _} = Vreq,
     {VlockRes, _} = Vres,
 
-    {SetTime, R4} = cowboy_req:header(<<"x-set-time">>, R3),
+    {SetTime, R5} = cowboy_req:header(<<"x-set-time">>, R4),
     Rx = cowboy_req:set_resp_header(<<"x-version">>, 
-				 ver_to_vheader(Vres), R4),
+				 ver_to_vheader(Vres), R5),
     Req2 = case SetTime of
       undefined -> Rx;
       _Other ->
@@ -212,6 +217,11 @@ json_acceptor(Req, State) ->
             Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req1),
             Req3 = cowboy_req:set_resp_body(ResponseBody, Req2),
             {true, Req3, State};
+        {nochanges, Vres, Changes} ->
+            BVer = ver_to_vheader(Vres),
+            Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req1),
+            {ok, Req3} = cowboy_req:reply(304, [], Req2),
+            {halt, Req3, State};
         ok ->  % async response
             {ok, Req3} = cowboy_req:reply(202, [], Req1),
             {halt, Req3, State};
@@ -238,18 +248,18 @@ request_path(Req) ->
     % lists:map(fun(X)->list_to_binary(X) end, Strings).
 
 %% PERF  consider not calling us on every change everywhere in hub
-wait_for_version_after(Vreq, Path) -> % {Vres, ChangeTree}
+wait_for_version_after(Vreq, Path, LongPollTimeout) -> % {Vres, ChangeTree}
     case hub:deltas(Vreq, Path) of
         {Vreq, _} -> 
             receive
-                _ -> wait_for_version_after(Vreq, Path)
-            after 30000 -> % 30 second timeout PERF
+                _ -> wait_for_version_after(Vreq, Path, LongPollTimeout)
+            after LongPollTimeout -> 
                 hub:deltas(Vreq, Path)  % force final version on timeout
             end;
         {Vres, []} -> % there were changes, but not in state we care about
                       % REVIEW PERF SEEMS NEEDED WHICH SEEMS WRONG!
                       % COULD BE INDICITAVE OF MESSAGE STORM?
-            wait_for_version_after(Vres, Path);
+            wait_for_version_after(Vres, Path, LongPollTimeout);
         {Vres, ChangeTree} -> 
             {Vres, ChangeTree}
     end.    
