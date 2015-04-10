@@ -5,23 +5,13 @@
 %%
 %% GET /a/point       Maps to hub:deltas        
 %% PUT /a/point       Maps to hub:update
-%%
-%% LICENSE
-%%
-%% Repurposed from RemoteRadio, Copyright © 1996-2012 Garth Hitchens, KG7GA,
-%% and Telo, Copyright © 2012-2013 Garth Hitchens, All Rights Reserved
-%% 
-%% License explicitly granted to Rose Point Navigation Systems, LLC, for use 
-%% in the NEMO network translator box.   For other uses contact the Author.
-%%
-%% vim:et,ts=4,sts=4
 
 -module(jrtp_bridge).
 
 -export([init/3]).
+-export([rest_init/2]).
 -export([allowed_methods/2]).
 -export([resource_exists/2]).
-
 -export([content_types_provided/2]).
 -export([rfc7386_provider/2]).
 -export([json_provider/2]).
@@ -36,17 +26,20 @@
 
 -export([json_to_erl/1, erl_to_json/1]).
 
-init(_Transport, _Req, []) ->
-    {upgrade, protocol, cowboy_rest}.
+init(_Transport, Req, Opts) ->
+    {upgrade, protocol, cowboy_rest, Req, Opts}.
+
+rest_init(Req, HandlerOpts) -> 
+    {ok, Req, HandlerOpts}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% cowboy REST helpers %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % does the point specified in the URL currently exist on the hub?
 resource_exists(Req, State) ->
-        case hub:fetch(request_path(Req)) of 
-          {_, error} -> {false, Req, State };
-          {_, _} -> {true, Req, State}
-        end.
+    case hub:fetch(request_path(Req)) of 
+      {_, error} -> {false, Req, State };
+      {_, _} -> {true, Req, State}
+    end.
 
 allowed_methods(Req, State) ->
         {[<<"GET">>, <<"PUT">>], Req, State}.
@@ -54,25 +47,17 @@ allowed_methods(Req, State) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%% providers (respond to GET) %%%%%%%%%%%%%%%%%%%%%%%%%
 
 content_types_provided(Req, State) -> 
-        {[  
-            {<<"application/merge-patch+json">>, rfc7386_provider},
-            {<<"application/json">>, json_provider},
-            {<<"text/html">>, html_provider},
-            {<<"text/plain">>, text_provider}
-        ], Req, State}.
+    {[  
+        {<<"application/merge-patch+json">>, rfc7386_provider},
+        {<<"application/json">>, json_provider},
+        {<<"text/html">>, html_provider},
+        {<<"text/plain">>, text_provider}
+    ], Req, State}.
 
 st_to_xsession(St) ->
   [ {hw_key, HwKey} ] = ets:lookup(config, hw_key),
   base64:encode(crypto:block_encrypt(blowfish_cfb64, 
 	       St, <<00,00,00,00,00,00,00,00>>, HwKey)).
-
-% keep the client led turned on as long as a client is connected.  Do this by
-% sending alive every second the connection lives with a timeout of 5 seconds.
-% when the connection dies, the process that owns this function is killed.
-connect_led_pinger() ->
-    'Elixir.Echo.Hardware.Led':alive(client,5000),
-    timer:sleep(1000),
-    connect_led_pinger().
 
 rfc7386_provider(Req, State) ->
     Path= request_path(Req),
@@ -88,11 +73,17 @@ rfc7386_provider(Req, State) ->
         undefined -> 
             hub:deltas(Vreq, Path);
         _AnyOtherValue -> 
-            LedPingerProcess = spawn(fun connect_led_pinger/0),
+            StartResult = case maps:find(on_wait_start, State) of
+              {ok, WaitStartFn} -> WaitStartFn();
+              _ -> nil
+            end,
             hub:watch(Path,[]),
             R = wait_for_version_after(Vreq, Path, LongPollTimeout),
             hub:unwatch(Path),
-            exit(LedPingerProcess, disconnected),
+            case maps:find(on_wait_end, State) of
+              {ok, WaitEndFn} -> WaitEndFn(StartResult);
+              _ -> nil
+            end,
             R
     end,
 
