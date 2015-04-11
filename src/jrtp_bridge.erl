@@ -17,13 +17,9 @@
 -export([json_provider/2]).
 -export([html_provider/2]).
 -export([text_provider/2]).
-
 -export([content_types_accepted/2]).
 -export([rfc7386_acceptor/2]).
 -export([json_acceptor/2]).
--export([firmware_acceptor/2]).
--export([device_lock_acceptor/2]).
-
 -export([json_to_erl/1, erl_to_json/1]).
 
 init(_Transport, Req, Opts) ->
@@ -47,17 +43,13 @@ allowed_methods(Req, State) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%% providers (respond to GET) %%%%%%%%%%%%%%%%%%%%%%%%%
 
 content_types_provided(Req, State) -> 
-    {[  
-        {<<"application/merge-patch+json">>, rfc7386_provider},
-        {<<"application/json">>, json_provider},
-        {<<"text/html">>, html_provider},
-        {<<"text/plain">>, text_provider}
-    ], Req, State}.
+  {[  
+    {<<"application/merge-patch+json">>, rfc7386_provider},
+    {<<"application/json">>, json_provider},
+    {<<"text/html">>, html_provider},
+    {<<"text/plain">>, text_provider}
+   ], Req, State}.
 
-st_to_xsession(St) ->
-  [ {hw_key, HwKey} ] = ets:lookup(config, hw_key),
-  base64:encode(crypto:block_encrypt(blowfish_cfb64, 
-	       St, <<00,00,00,00,00,00,00,00>>, HwKey)).
 
 rfc7386_provider(Req, State) ->
     Path= request_path(Req),
@@ -65,10 +57,10 @@ rfc7386_provider(Req, State) ->
     Vreq = vheader_to_ver(VersHeader),
     {LongPoll, R3} = cowboy_req:header(<<"x-long-poll">>, R2),
     {LongPollTimeoutHeaderValue, R4} = cowboy_req:header(<<"x-long-poll-timeout">>, R3),
-		LongPollTimeout = case LongPollTimeoutHeaderValue of 
-			undefined -> 30000;
-			N -> binary_to_integer(N)
-		end,
+    LongPollTimeout = case LongPollTimeoutHeaderValue of 
+                        undefined -> 30000;
+                        N -> binary_to_integer(N)
+                      end,
     {Vres, Tree} = case LongPoll of 
         undefined -> 
             hub:deltas(Vreq, Path);
@@ -90,75 +82,49 @@ rfc7386_provider(Req, State) ->
     {VlockReq, _} = Vreq,
     {VlockRes, _} = Vres,
 
-    {SetTime, R5} = cowboy_req:header(<<"x-set-time">>, R4),
-    Rx = cowboy_req:set_resp_header(<<"x-version">>, 
-				 ver_to_vheader(Vres), R5),
-    Req2 = case SetTime of
-      undefined -> Rx;
-      _Other ->
-	cowboy_req:set_resp_header(<<"x-session">>, 
-		st_to_xsession(SetTime), Rx)
-    end,
+    R5 = cowboy_req:set_resp_header(<<"x-version">>, ver_to_vheader(Vres), R4),
+    R6 = invoke_response_hook_if_present(R5, State),
     
     % decide based on whether lock changed whether or not to respond with
     % application/json or application/xml+json
-    
-    Req2_1 = case VlockRes of
-        VlockReq -> Req2;
-        _ -> cowboy_req:set_resp_header(<<"content-type">>, <<"application/json">>, Req2)
+    % REVIEW: really? is this working? 
+    R7 = case VlockRes of
+        VlockReq -> R6;
+        _ -> cowboy_req:set_resp_header(<<"content-type">>, <<"application/json">>, R6)
     end,    
     
     % manage correct response to conditional gets
-    
-    ConditionalGet = (Vreq > 0),
-    case {ConditionalGet, Tree} of 
-        {true, []} -> %% conditional, but nothing modified, respond with 304
-            %% {<< <<"">>/binary>>, Req2, State};
-            {ok, Req3} = cowboy_req:reply(304, [], Req2_1),
-            {halt, Req3, State};
-            %%{<< <<"\n">>/binary>>, cowboy_req:reply(304, [] Req2), State};
-        {false, []} -> %% unconditional, but empty
-            {<< <<"">>/binary>>, Req2_1, State};
-        _ -> %% we have a real response
+    case {Vreq, Tree} of 
+        {{undefined, 0}, []} -> %% unconditional request,, but empty
+            {<< <<"">>/binary>>, R7, State};
+        {_, []} -> %% conditional, but nothing modified, respond with 304
+            {ok, R8} = cowboy_req:reply(304, [], R7),
+            {halt, R8, State};
+        _ -> %% non-empty response
             Body = erl_to_json(Tree),
-            {<<Body/binary, <<"\n">>/binary>>, Req2_1, State}
+            {<<Body/binary, <<"\n">>/binary>>, R7, State}
     end.
-
 
 json_provider(Req, State) ->
     Path= request_path(Req),
     {Vres, Tree} = hub:deltas({undefined, 0}, Path),
-    {SetTime, R4} = cowboy_req:header(<<"x-set-time">>, Req),
-    Rx = cowboy_req:set_resp_header(<<"x-version">>, 
-				 ver_to_vheader(Vres), R4),
-    Req2 = case SetTime of
-      undefined -> Rx;
-      _Other ->
-	cowboy_req:set_resp_header(<<"x-session">>, 
-		st_to_xsession(SetTime), Rx)
-    end,
+    Req2 = cowboy_req:set_resp_header(<<"x-version">>, ver_to_vheader(Vres), Req),
+    Req3 = invoke_response_hook_if_present(Req2, State),
     case Tree of 
-        [] -> {<< <<"">>/binary>>, Req2, State};
+        [] -> {<< <<"">>/binary>>, Req3, State};
         _ ->
             Body = erl_to_json(Tree),
-            {<<Body/binary, <<"\n">>/binary>>, Req2, State}
+            {<<Body/binary, <<"\n">>/binary>>, Req3, State}
     end.
 
 html_provider(Req, State) ->
-    case request_path(Req) of
-        [] ->  %% redirect to the /admin/index.html file for root requests
-            {ok, Reply} = cowboy_req:reply(302, 
-                [{<<"Location">>, <<"/panel/index.html">>}], Req),
-            {ok, Reply, State};
-        _Else ->
-                        Header= <<"<html><head><meta charset=\"utf-8\"><title>Rose Point Commercial Radar Interface</title></head><body><pre>">>,
-                        Footer= <<"</pre></body></html>">>,
-            {Body, Reply, NewState} = json_provider(Req, State),
-                        {<<Header/binary, Body/binary, Footer/binary>>, Reply, NewState}
-    end.
+      Header= <<"<html><head><meta charset=\"utf-8\"></head><body><pre>">>,
+      Footer= <<"</pre></body></html>">>,
+      {Body, Reply, NewState} = json_provider(Req, State),
+      {<<Header/binary, Body/binary, Footer/binary>>, Reply, NewState}.
 
-text_provider(Req, State) ->
-    {<<"REST Hello World as text!">>, Req, State}.
+text_provider(Req, State) -> 
+      json_provider(Req, State).
 
 % Given a version header string in the format "VLOCK:VER", return
 % the version tuple that corresponds to that, for passing on to the hub
@@ -183,16 +149,8 @@ ver_to_vheader({Vlock, Ver}) ->
 content_types_accepted(Req, State) ->
     {[
         {{<<"application">>, <<"merge-patch+json">>, []}, rfc7386_acceptor},
-        {{<<"application">>, <<"json">>, []}, json_acceptor},
-        {{<<"application">>, <<"x-firmware">>, []}, firmware_acceptor},
-        {{<<"application">>, <<"x-device-lock">>, []}, device_lock_acceptor}
+        {{<<"application">>, <<"json">>, []}, json_acceptor}
     ], Req, State}.
-
-firmware_acceptor(Req, State) -> 
-    'Elixir.Echo.Hardware.Firmware':upload_acceptor(Req, State).
-
-device_lock_acceptor(Req, State) -> 
-    'Elixir.Echo.Hardware.Firmware':device_lock_acceptor(Req, State).
 
 rfc7386_acceptor(Req, State) ->
     json_acceptor(Req, State).
@@ -208,7 +166,7 @@ json_acceptor(Req, State) ->
             Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req1),
             Req3 = cowboy_req:set_resp_body(ResponseBody, Req2),
             {true, Req3, State};
-        {nochanges, Vres, Changes} ->
+        {nochanges, Vres, _Changes} ->
             BVer = ver_to_vheader(Vres),
             Req2 = cowboy_req:set_resp_header(<<"x-version">>, BVer, Req1),
             {ok, Req3} = cowboy_req:reply(304, [], Req2),
@@ -222,6 +180,12 @@ json_acceptor(Req, State) ->
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% utility functionss %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+invoke_response_hook_if_present(Req, State) -> 
+  case maps:find(json_provider_hook, State) of
+      {ok, RespHookFn} -> RespHookFn(Req);
+      _ -> Req
+  end.
 
 %% request_path(Request) -> List
 %%
@@ -238,7 +202,7 @@ request_path(Req) ->
     % Strings = string:tokens(binary_to_list(RequestPath), "/"),
     % lists:map(fun(X)->list_to_binary(X) end, Strings).
 
-%% PERF  consider not calling us on every change everywhere in hub
+%% REVIEW PERF: consider not calling us on every change everywhere in hub
 wait_for_version_after(Vreq, Path, LongPollTimeout) -> % {Vres, ChangeTree}
     case hub:deltas(Vreq, Path) of
         {Vreq, _} -> 
@@ -256,28 +220,15 @@ wait_for_version_after(Vreq, Path, LongPollTimeout) -> % {Vres, ChangeTree}
     end.    
 
 erl_to_json(Term) ->
-    Fn = fun(X) when is_atom(X) -> 
-	deatomize(X);
-    (X) -> 
-        X
-    end,
-    jsx:encode(Term, [ {space, 1}, {indent, 2}, {pre_encode, Fn}]) .
+    jsx:encode(Term, [ {space, 1}, {indent, 2}, {pre_encode, fun deatomize/1}]).
 
 json_to_erl(Json) ->
-    Fn = fun(X) when is_binary(X) -> 
-        atomize(X);
-    (X) -> 
-        X
-    end,
-    case jsx:decode(Json, [relax, {labels, atom}, {post_decode, Fn}]) of
+    case jsx:decode(Json, [relax, {labels, atom}, {post_decode, fun atomize/1}]) of
         {incomplete, _CompletionFn} -> throw(error);
         Erl -> Erl
     end.
 
-% atomize
-%
 % convert binary to atoms, if they're preceded by hash marks.
-% REVIEW: code to do this in reverse is commented out, do we still need this?
 
 atomize(<< H:1/binary, B/binary>>) -> 
     case H of 
@@ -286,17 +237,11 @@ atomize(<< H:1/binary, B/binary>>) ->
     end;
 atomize(X) -> X.
 
-% deatomize
-% 
 % convert an atom to binary, unless it's true, false or nil, or not an atom,
-% in which case we leave it alone
 
-deatomize(A) when is_atom(A) ->
-    case A of
-      true -> true;
-      false -> false;
-      null -> null;
-      OtherAtom -> atom_to_binary(OtherAtom, utf8) % was << <<"#">>/binary, BinX/binary>>;
-    end;
+deatomize(true) -> true;
+deatomize(false) -> false;
+deatomize(null) -> null;
+deatomize(A) when is_atom(A) -> atom_to_binary(A, utf8);
 deatomize(A) -> A.
 

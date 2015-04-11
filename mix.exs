@@ -4,7 +4,7 @@ defmodule JrtpBridge.Mixfile do
 
   def project, do: [
     app:      :jrtp_bridge,
-    version:  "0.0.1",
+    version:  "0.1.0",
     elixir:   "~> 1.0",
     deps:     deps(Mix.env)
   ]

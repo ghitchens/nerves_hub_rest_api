@@ -5,32 +5,37 @@ defmodule JrtpBridgeTest do
   HTTPotion.start  
 
   # configure and start a basic http server on port 8088 using cowboy 
-  # that puts the jrtp bridge at the /jrtp/ directory purposes.
+  # that puts the jrtp bridge at the /jrtp/ directory for test purposes.
 
   @test_http_port 8088
   @test_http_root "localhost:#{@test_http_port}/jrtp/"
   @silly_path [:tests, :silly] 
   @silly_http @test_http_root <> "tests/silly/"
 
+  :hub.start
+
   def connect_pinger do
-    #IO.write "Keepalive Called"
-    #Led.alive :client, 5000
     :timer.sleep 1000
     connect_pinger
   end
 
-  dispatch = :cowboy_router.compile [ 
-    {:_, [ 
+  # a funcntion to test response hooks
+  def json_provider_hook_test_fn(req) do
+    case :cowboy_req.header("x-resp-hook-input", req) do
+      {:undefined, r} -> r
+      {t, r} -> :cowboy_req.set_resp_header "x-resp-hook-result", t, r
+    end
+  end
+
+  dispatch = :cowboy_router.compile [ {:_, [ 
       {"/jrtp/[...]", :jrtp_bridge, %{ 
         on_wait_start: (fn -> spawn(&JrtpBridgeTest.connect_pinger/0) end),
-        on_wait_end:   &(:erlang.exit(&1, :disconnected)) 
+        on_wait_end:   &(:erlang.exit(&1, :disconnected)),
+        json_provider_hook: &JrtpBridgeTest.json_provider_hook_test_fn/1
       }} ]} ]
 
   {:ok, _pid} = :cowboy.start_http :http, 10, [port: @test_http_port], 
                                               [env: [dispatch: dispatch] ]
-
-  :hub.start
-
 
   test "webserver is up and returns root of url space as json when asked for json" do
     # need to put a key there otherwise can get a 304
@@ -39,6 +44,28 @@ defmodule JrtpBridgeTest do
     headers = resp.headers
     assert resp.status_code == 200
     assert {:ok, "Cowboy"} = Keyword.fetch(headers, :server)
+    assert {:ok, "application/json"} = Keyword.fetch(headers, :'content-type')
+  end
+
+  test "response_hook modifies headers when it's present in json request" do
+    resp = HTTPotion.get @test_http_root, headers: [
+      "Accept": "application/json", 
+      "x-resp-hook-input": "TESTVALUE"
+    ]
+    headers = resp.headers
+    assert resp.status_code == 200
+    assert {:ok, "TESTVALUE"} = Keyword.fetch(headers, :'x-resp-hook-result')
+    assert {:ok, "application/json"} = Keyword.fetch(headers, :'content-type')
+  end
+
+  test "response_hook modifies merge-patch when it's present" do
+    resp = HTTPotion.get @test_http_root, headers: [
+      "Accept": "application/merge-patch+json", 
+      "x-resp-hook-input": "TEST2VALUE"
+    ]
+    headers = resp.headers
+    assert resp.status_code == 200
+    assert {:ok, "TEST2VALUE"} = Keyword.fetch(headers, :'x-resp-hook-result')
     assert {:ok, "application/json"} = Keyword.fetch(headers, :'content-type')
   end
 
@@ -134,29 +161,30 @@ defmodule JrtpBridgeTest do
     assert {:ok, "application/merge-patch+json"} = header resp, "content-type"
     assert jterm(resp) == [ another_key: "maybe" ]
 
-		# make sure we timeout properly by reqesting a uri with long polling, 
-		# and sending a change with no changes, and hopefully we don't get response
+    # make sure we timeout properly by reqesting a uri with long polling, 
+    # and sending a change with no changes, and hopefully we don't get response
 		
-		spawn fn ->
-			:timer.sleep 300
-			:hub.update test_path, test_data2
-			:timer.sleep 100
-			:hub.update test_path, test_data2
-			:timer.sleep 100
-			:hub.update test_path, test_data2
-			:timer.sleep 100
-			:hub.update test_path, test_data2
-		end
+    spawn fn ->
+      :timer.sleep 300
+      :hub.update test_path, test_data2
+      :timer.sleep 50
+      :hub.update test_path, test_data2
+      :timer.sleep 50
+      :hub.update test_path, test_data2
+      :timer.sleep 50
+      :hub.update test_path, test_data2
+    end
 		
     resp = HTTPotion.get test_root_uri, headers: [ 
 			"x-since-version": second_vers, 
 			"x-long-poll": true, 
-			"x-long-poll-timeout": "3000"
+			"x-long-poll-timeout": "1000"
 		]
-    assert {:ok, second_vers} == header resp, "x-version"
-		assert 304 == resp.status_code			 # should be NOT MODIFIED
 
-		# now make the same change, and ask if changes happened
+    assert {:ok, second_vers} == header resp, "x-version"
+	assert 304 == resp.status_code			 # should be NOT MODIFIED
+
+	# now make the same change, and ask if changes happened
 
     :hub.update test_path, test_data2
     resp = HTTPotion.get test_uri, headers: [ "x-since-version": second_vers]
