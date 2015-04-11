@@ -31,3 +31,8 @@ Called when a connection is initiated, may return a value which is passed to on_
 on_wait_end :: fn/1
 
 Called with the result of on_wait_start, if exists, or false, if not.  
+
+json_provider_hook :: fn/1
+
+Allows hooking the responses given by th json_provider and rfc7386_provider Takes a cowboy_req parameter, and returns a modified cowboy_req.
+
