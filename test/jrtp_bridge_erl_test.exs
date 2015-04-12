@@ -1,15 +1,15 @@
-defmodule JrtpBridgeTest do
+defmodule JrtpBridgeErlTest do
 
   use ExUnit.Case
 
-  HTTPotion.start  
+  HTTPotion.start
 
-  # configure and start a basic http server on port 8088 using cowboy 
+  # configure and start a basic http server on port 8088 using cowboy
   # that puts the jrtp bridge at the /jrtp/ directory for test purposes.
 
   @test_http_port 8088
   @test_http_root "localhost:#{@test_http_port}/jrtp/"
-  @silly_path [:tests, :silly] 
+  @silly_path [:tests, :silly]
   @silly_http @test_http_root <> "tests/silly/"
 
   :hub.start
@@ -27,14 +27,14 @@ defmodule JrtpBridgeTest do
     end
   end
 
-  dispatch = :cowboy_router.compile [ {:_, [ 
-      {"/jrtp/[...]", :jrtp_bridge, %{ 
-        on_wait_start: (fn -> spawn(&JrtpBridgeTest.connect_pinger/0) end),
+  dispatch = :cowboy_router.compile [ {:_, [
+      {"/jrtp/[...]", :jrtp_bridge, %{
+        on_wait_start: (fn -> spawn(&JrtpBridgeErlTest.connect_pinger/0) end),
         on_wait_end:   &(:erlang.exit(&1, :disconnected)),
-        json_provider_hook: &JrtpBridgeTest.json_provider_hook_test_fn/1
+        json_provider_hook: &JrtpBridgeErlTest.json_provider_hook_test_fn/1
       }} ]} ]
 
-  {:ok, _pid} = :cowboy.start_http :http, 10, [port: @test_http_port], 
+  {:ok, _pid} = :cowboy.start_http :http, 10, [port: @test_http_port],
                                               [env: [dispatch: dispatch] ]
 
   test "webserver is up and returns root of url space as json when asked for json" do
@@ -49,7 +49,7 @@ defmodule JrtpBridgeTest do
 
   test "response_hook modifies headers when it's present in json request" do
     resp = HTTPotion.get @test_http_root, headers: [
-      "Accept": "application/json", 
+      "Accept": "application/json",
       "x-resp-hook-input": "TESTVALUE"
     ]
     headers = resp.headers
@@ -60,7 +60,7 @@ defmodule JrtpBridgeTest do
 
   test "response_hook modifies merge-patch when it's present" do
     resp = HTTPotion.get @test_http_root, headers: [
-      "Accept": "application/merge-patch+json", 
+      "Accept": "application/merge-patch+json",
       "x-resp-hook-input": "TEST2VALUE"
     ]
     headers = resp.headers
@@ -122,7 +122,7 @@ defmodule JrtpBridgeTest do
     test_path = [ test_rootkey, test_subkey ]
     test_uri = "#{@test_http_root}#{test_rootkey}/#{test_subkey}"
     test_root_uri = "#{@test_http_root}#{test_rootkey}"
-    
+
     # attempt to get data from our test area.  This should generate
     # a 404 since we haven't created the data there yet
 
@@ -138,7 +138,7 @@ defmodule JrtpBridgeTest do
     assert {:ok, "application/json"} = header resp, "content-type"
     assert {:ok, first_vers} = header resp, "x-version"
     assert Keyword.equal?(jterm(resp), test_data1)
-    
+
     # test updating the hub and seeing if we can query the HTTP
     # interface to see the updated version and updated data
 
@@ -151,8 +151,8 @@ defmodule JrtpBridgeTest do
     [a, _b] = String.split(second_vers, ":")
     assert String.length(a) > 5
     assert iver(second_vers) == (iver(first_vers) + 1)
-    
-    # now make sure that if we ask for changes since a particular 
+
+    # now make sure that if we ask for changes since a particular
     # version, that we only get back changes since that version
 
     resp = HTTPotion.get test_uri, headers: [ "x-since-version": first_vers]
@@ -161,9 +161,9 @@ defmodule JrtpBridgeTest do
     assert {:ok, "application/merge-patch+json"} = header resp, "content-type"
     assert jterm(resp) == [ another_key: "maybe" ]
 
-    # make sure we timeout properly by reqesting a uri with long polling, 
+    # make sure we timeout properly by reqesting a uri with long polling,
     # and sending a change with no changes, and hopefully we don't get response
-		
+
     spawn fn ->
       :timer.sleep 300
       :hub.update test_path, test_data2
@@ -174,10 +174,10 @@ defmodule JrtpBridgeTest do
       :timer.sleep 50
       :hub.update test_path, test_data2
     end
-		
-    resp = HTTPotion.get test_root_uri, headers: [ 
-			"x-since-version": second_vers, 
-			"x-long-poll": true, 
+
+    resp = HTTPotion.get test_root_uri, headers: [
+			"x-since-version": second_vers,
+			"x-long-poll": true,
 			"x-long-poll-timeout": "1000"
 		]
 
