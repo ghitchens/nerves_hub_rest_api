@@ -1,4 +1,4 @@
-defmodule JrtpBridgeTest do
+defmodule JrtpBridgeExTest do
 
   use ExUnit.Case
 
@@ -34,9 +34,9 @@ defmodule JrtpBridgeTest do
 
   dispatch = CowboyRouter.compile [ {:_, [
       {"/jrtp/[...]", JrtpBridge, %{
-        on_wait_start: (fn -> spawn(&JrtpBridgeTest.connect_pinger/0) end),
+        on_wait_start: (fn -> spawn(&JrtpBridgeExTest.connect_pinger/0) end),
         on_wait_end:   &(:erlang.exit(&1, :disconnected)),
-        json_provider_hook: &(JrtpBridgeTest.json_provider_hook_test_fn/1),
+        json_provider_hook: &(JrtpBridgeExTest.json_provider_hook_test_fn/1),
         webpage_title: @webpage_title
       }} ]} ]
 
