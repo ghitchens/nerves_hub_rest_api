@@ -1,15 +1,27 @@
 defmodule JrtpBridge do
+  @moduledoc """
+  JrtpBridge - JSON/REST Transport Protocol Bridge
+
+  Supports the REST methodoy to access points on the Hub, using JSON as
+  the notation of the state.
+
+  GET /a/point       Maps to Hub.deltas
+  PUT /a/point       Maps to Hub.update
+  """
 
   alias :cowboy_req, as: CowboyReq
 
+  @doc false
   def init(_transport, req, state) do
     {:upgrade, :protocol, :cowboy_rest, req, state}
   end
 
+  @doc false
   def rest_init(req, handler_opts) do
     {:ok, req, handler_opts}
   end
 
+  @doc false
   def resource_exists(req, state) do
     case Hub.fetch(request_path(req)) do
       {_, :error} -> {false, req, state}
@@ -17,10 +29,12 @@ defmodule JrtpBridge do
     end
   end
 
+  @doc false
   def allowed_methods(req, state) do
     {["GET", "PUT"], req, state}
   end
 
+  @doc false
   def content_types_provided(req, state) do
     {[{"application/merge-patch+json", :rfc7386_provider},
       {"application/json", :json_provider},
@@ -29,6 +43,7 @@ defmodule JrtpBridge do
       ], req, state}
   end
 
+  @doc false
   def rfc7386_provider(req, state) do
     path = request_path(req)
     {vers_header, req} = CowboyReq.header("x-since-version", req)
@@ -68,7 +83,6 @@ defmodule JrtpBridge do
       _ -> CowboyReq.set_resp_header("content-type", "application/json", req)
     end
 
-    conditional_get = (vreq > 0)
     case {vreq, tree} do
       {{:undefined, 0}, []} -> {"", req, state}
       {_, []} ->
@@ -80,6 +94,7 @@ defmodule JrtpBridge do
     end
   end
 
+  @doc false
   def json_provider(req, state) do
     path = request_path(req)
     {vres, tree} = Hub.deltas({:undefined, 0}, path)
@@ -93,6 +108,7 @@ defmodule JrtpBridge do
     end
   end
 
+  @doc false
   def html_provider(req, state) do
     header = "<html><head><meta charset=\"utf-8\">#{Dict.get(state, :webpage_title)}</head><body><pre>"
     footer = "</pre></body></html>"
@@ -100,26 +116,12 @@ defmodule JrtpBridge do
     {header <> body <> footer, reply, state}
   end
 
+  @doc false
   def text_provider(req, state) do
     json_provider(req, state)
   end
 
-  def vheader_to_ver(version_header_value) do
-    case version_header_value do
-      :undefined -> {:undefined, 0}
-      s ->
-        case String.split(s, ":") do
-          [vlock, vs] -> {vlock, String.to_integer(vs)}
-          _ -> {:undefined, 0}
-        end
-    end
-  end
-
-  def ver_to_vheader({vlock, ver}) do
-    bver = :erlang.list_to_binary(:erlang.integer_to_list(ver))
-    "#{vlock}:#{bver}"
-  end
-
+  @doc false
   def content_types_accepted(req, state) do
     {[
       {{"application", "merge-patch+json", []}, :rfc7386_acceptor},
@@ -131,7 +133,7 @@ defmodule JrtpBridge do
     json_acceptor(req, state)
   end
 
-  def json_acceptor(req, state) do
+  defp json_acceptor(req, state) do
     {:ok, request_body, req} = CowboyReq.body(req)
     proposed_changes = json_to_erl(request_body)
     case Hub.request(request_path(req), proposed_changes) do
@@ -142,7 +144,7 @@ defmodule JrtpBridge do
         req = CowboyReq.set_resp_header("x-version", bver, req)
         req = CowboyReq.set_resp_body(response_body, req)
         {true, req, state}
-      {:nochanges, vres, changes} ->
+      {:nochanges, vres, _changes} ->
         bver = ver_to_vheader(vres)
         req = CowboyReq.set_resp_header("x-version", bver, req)
         {:ok, req} = CowboyReq.reply(304, [], req)
@@ -156,57 +158,75 @@ defmodule JrtpBridge do
     end
   end
 
-  def invoke_response_hook_if_present(req, state) do
+  defp vheader_to_ver(version_header_value) do
+    case version_header_value do
+      :undefined -> {:undefined, 0}
+      s ->
+        case String.split(s, ":") do
+          [vlock, vs] -> {vlock, String.to_integer(vs)}
+          _ -> {:undefined, 0}
+        end
+    end
+  end
+
+  defp ver_to_vheader({vlock, ver}) do
+    bver = Integer.to_string ver
+    "#{vlock}:#{bver}"
+  end
+
+  defp invoke_response_hook_if_present(req, state) do
     case Dict.get(state, :json_provider_hook) do
       nil -> req
       resp_hook_fn -> resp_hook_fn.(req)
     end
   end
 
-  def request_path(req) do
+  defp request_path(req) do
     {tokens, _} = CowboyReq.path_info(req)
     tokens
   end
 
-  def wait_for_version_after(vreq, path, long_poll_timeout) do
+  defp wait_for_version_after(vreq, path, long_poll_timeout) do
     case Hub.deltas(vreq, path) do
-      {vreq, _} ->
+      {vq, _} when vq == vreq->
         receive do
-          _ -> wait_for_version_after(vreq, path, long_poll_timeout)
+          _ -> wait_for_version_after(vq, path, long_poll_timeout)
         after
           long_poll_timeout ->
-            Hub.deltas(vreq, path)
+            Hub.deltas(vq, path)
         end
       {vres, []} ->
-        wait_for_version_after(vres, path, long_poll_timeout)
+          wait_for_version_after(vres, path, long_poll_timeout)
       {vres, change_tree} ->
         {vres, change_tree}
     end
   end
 
-  def erl_to_json(term) do
+  defp erl_to_json(term) do
     :jsx.encode(term, [{:space, 1}, {:indent, 2}, {:pre_encode, &deatomize/1}])
   end
 
-  def json_to_erl(json) do
+  defp json_to_erl(json) do
     case :jsx.decode(json, [:relax, {:labels, :atom}, {:post_decode, &atomize/1}]) do
       {:incomplete, _} -> throw(:error)
       erl -> erl
     end
   end
 
-  def atomize(<< h :: size(1)-binary, b :: binary>>) do
+  # converts a binary to an atom
+  defp atomize(<< h :: size(1)-binary, b :: binary>>) do
     case h do
-      "#" -> :erlang.binary_to_atom(b, :utf8)
+      "#" -> String.to_atom b
       _ -> h <> b
     end
   end
 
-  def atomize(o), do: o
+  defp atomize(o), do: o
 
-  def deatomize(true), do: true
-  def deatomize(false), do: false
-  def deatomize(nil), do: nil
-  def deatomize(a) when is_atom(a), do: :erlang.atom_to_binary(a, :utf8)
-  def deatomize(o), do: o
+  # converts an atom to a binary
+  defp deatomize(true), do: true
+  defp deatomize(false), do: false
+  defp deatomize(nil), do: nil
+  defp deatomize(a) when is_atom(a), do: Atom.to_string a
+  defp deatomize(o), do: o
 end
