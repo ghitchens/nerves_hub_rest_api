@@ -89,8 +89,8 @@ defmodule JrtpBridge do
         {:ok, req} = CowboyReq.reply(304, [], req)
         {:halt, req, state}
       _ ->
-        body = erl_to_json(tree)
-        {"#{body}\n", req, state}
+        body = erl_to_json tree
+        { body <> "\n", req, state}
     end
   end
 
@@ -104,7 +104,7 @@ defmodule JrtpBridge do
       [] -> {"", req, state}
       _ ->
         body = erl_to_json tree
-        {body <> "\n", req, state}
+        { body <> "\n", req, state}
     end
   end
 
@@ -133,7 +133,7 @@ defmodule JrtpBridge do
     json_acceptor(req, state)
   end
 
-  defp json_acceptor(req, state) do
+  def json_acceptor(req, state) do
     {:ok, request_body, req} = CowboyReq.body(req)
     proposed_changes = json_to_erl(request_body)
     case Hub.request(request_path(req), proposed_changes) do
