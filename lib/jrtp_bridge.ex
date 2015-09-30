@@ -10,10 +10,11 @@ defmodule JrtpBridge do
   """
 
   alias :cowboy_req, as: CowboyReq
+  require Firmware
 
   @doc false
-  def init(_transport, req, state) do
-    {:upgrade, :protocol, :cowboy_rest, req, state}
+  def init(_transport, _req, _state) do
+    {:upgrade, :protocol, :cowboy_rest} #, req, state}
   end
 
   @doc false
@@ -110,7 +111,7 @@ defmodule JrtpBridge do
 
   @doc false
   def html_provider(req, state) do
-    header = "<html><head><meta charset=\"utf-8\">#{Dict.get(state, :webpage_title)}</head><body><pre>"
+    header = "<html><head><meta charset=\"utf-8\"><title>#{Dict.get(state, :webpage_title)}</title></head><body><pre>"
     footer = "</pre></body></html>"
     {body, reply, state} = json_provider(req, state)
     {header <> body <> footer, reply, state}
@@ -126,7 +127,14 @@ defmodule JrtpBridge do
     {[
       {{"application", "merge-patch+json", []}, :rfc7386_acceptor},
       {{"application", "json", []}, :json_acceptor},
+      {{"application", "x-firmware", []}, :firmware_acceptor}
     ], req, state}
+  end
+  
+  # REVIEW: these "extra" acceptors should be able to be passed in somehow...
+  # x-firmware, x-device-lock... 
+  def firmware_acceptor(req, state) do
+    Firmware.upload_acceptor(req, state)
   end
 
   def rfc7386_acceptor(req, state) do

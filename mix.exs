@@ -18,9 +18,10 @@ defmodule JrtpBridge.Mixfile do
   ]
 
   defp deps(_), do: [
-      {:earmark, "~> 0.1", only: :dev},
-      {:ex_doc, "~> 0.7", only: :dev},
-      { :hub, github: "cellulose/hub"},
+      { :earmark, "~> 0.1", only: :dev },
+      { :ex_doc, "~> 0.7", only: :dev },
+      { :hub, github: "cellulose/hub" },
+      { :firmware, github: "cellulose/firmware" },
       { :cowboy, "~> 1.0" },
       { :jsx, github: "talentdeficit/jsx", ref: "v1.4.3", override: true },
   ]
