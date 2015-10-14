@@ -138,7 +138,8 @@ defmodule JrtpBridge do
   def json_acceptor(req, state) do
     {:ok, request_body, req} = CowboyReq.body(req)
     proposed_changes = json_to_erl(request_body)
-    case Hub.request(request_path(req), proposed_changes) do
+    {method, req} = CowboyReq.method(req)
+    case Hub.request(request_path(req), proposed_changes, %{http_method: method}) do
       {:changes, vres, changes} ->
         change_json = erl_to_json(changes)
         response_body = change_json <> "\n"
