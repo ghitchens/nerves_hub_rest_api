@@ -10,7 +10,7 @@ defmodule JrtpBridge.Mixfile do
   ]
 
   def application, do: [
-      applications: [ :elixir, :jsx, :cowboy, :hub ]
+      applications: [ :elixir, :jsx, :cowboy, :nerves_hub ]
   ]
 
   defp deps(:test), do: deps(:dev) ++ [
