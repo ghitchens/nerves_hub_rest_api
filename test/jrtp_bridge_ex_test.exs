@@ -122,7 +122,7 @@ defmodule JrtpBridgeExTest do
   @doc "Return term from decoded json body of the response"
   def jterm(resp) do
     #{:ok, content_type} = header resp, "content-type"
-    :jrtp_bridge.json_to_erl(resp.body)
+    JrtpBridge.json_to_erl(resp.body)
   end
 
   test "JSON interface to querying hub including versions and deltas" do

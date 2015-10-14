@@ -36,3 +36,12 @@ json_provider_hook :: fn/1
 
 Allows hooking the responses given by th json_provider and rfc7386_provider Takes a cowboy_req parameter, and returns a modified cowboy_req.
 
+webpage_title :: binary
+
+HTTP requests of Content-Type application/html webpage title will be set to this value
+
+firmware_acceptor :: module
+
+When a Content-Type of application/x-firmware is provided the firmware\_acceptor/2 method of the provided module will be called passing the _req_ and _state_ will be the paramaters.
+
+

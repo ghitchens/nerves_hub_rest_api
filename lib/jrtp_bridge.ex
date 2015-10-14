@@ -10,7 +10,7 @@ defmodule JrtpBridge do
   """
 
   alias :cowboy_req, as: CowboyReq
-  require Firmware
+  alias Nerves.Hub, as: Hub
 
   @doc false
   def init(_transport, _req, _state) do
@@ -32,7 +32,7 @@ defmodule JrtpBridge do
 
   @doc false
   def allowed_methods(req, state) do
-    {["GET", "PUT"], req, state}
+    {["GET", "PUT", "POST"], req, state}
   end
 
   @doc false
@@ -130,12 +130,6 @@ defmodule JrtpBridge do
       {{"application", "x-firmware", []}, :firmware_acceptor}
     ], req, state}
   end
-  
-  # REVIEW: these "extra" acceptors should be able to be passed in somehow...
-  # x-firmware, x-device-lock... 
-  def firmware_acceptor(req, state) do
-    Firmware.upload_acceptor(req, state)
-  end
 
   def rfc7386_acceptor(req, state) do
     json_acceptor(req, state)
@@ -157,12 +151,25 @@ defmodule JrtpBridge do
         req = CowboyReq.set_resp_header("x-version", bver, req)
         {:ok, req} = CowboyReq.reply(304, [], req)
         {:halt, req, state}
+      {:accepted, location} ->
+        req = CowboyReq.set_resp_header("Location", location, req)
+        {:ok, req} = CowboyReq.reply(202, [], req)
+        {:halt, req, state}
       :ok ->
         {:ok, req} = CowboyReq.reply(202, [], req)
         {:halt, req, state}
       _ ->
         {:ok, req} = CowboyReq.reply(400, [], req)
         {:halt, req, state}
+    end
+  end
+  
+  def firmware_acceptor(req, state) do
+    case Dict.get(state, :firmware_acceptor) do
+      nil ->
+        {:ok, req} = CowboyReq.reply(404, [], req)
+        {:halt, req, state}
+      fa -> fa.upload_acceptor(req, state)
     end
   end
 
@@ -210,31 +217,17 @@ defmodule JrtpBridge do
     end
   end
 
-  defp erl_to_json(term) do
-    :jsx.encode(term, [{:space, 1}, {:indent, 2}, {:pre_encode, &deatomize/1}])
-  end
-
-  defp json_to_erl(json) do
-    case :jsx.decode(json, [:relax, {:labels, :atom}, {:post_decode, &atomize/1}]) do
-      {:incomplete, _} -> throw(:error)
-      erl -> erl
+  def erl_to_json(term) do
+    case JSX.encode(term, [{:space, 1}, {:indent, 2}]) do
+      {:ok, json} -> json
+      {:error, _} -> throw(:error)
     end
   end
 
-  # converts a binary to an atom
-  defp atomize(<< h :: size(1)-binary, b :: binary>>) do
-    case h do
-      "#" -> String.to_atom b
-      _ -> h <> b
+  def json_to_erl(json) do
+    case JSX.decode(json, [{:labels, :atom}]) do
+      {:error, _} -> throw(:error)
+      {:ok, erl} -> erl |> Enum.into []
     end
   end
-
-  defp atomize(o), do: o
-
-  # converts an atom to a binary
-  defp deatomize(true), do: true
-  defp deatomize(false), do: false
-  defp deatomize(nil), do: nil
-  defp deatomize(a) when is_atom(a), do: Atom.to_string a
-  defp deatomize(o), do: o
 end
