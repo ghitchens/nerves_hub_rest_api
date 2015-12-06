@@ -1,12 +1,17 @@
-defmodule JrtpBridgeExTest do
+defmodule Nerves.HubRestApiTest do
 
   use ExUnit.Case
+
+  alias Nerves.Hub
+  alias Nerves.HubRestApi
+  alias Nerves.HubRestApiTest
 
   alias :cowboy, as: Cowboy
   alias :cowboy_req, as: CowboyReq
   alias :cowboy_router, as: CowboyRouter
 
   HTTPotion.start
+  Hub.start
 
   # configure and start a basic http server on port 8088 using cowboy
   # that puts the jrtp bridge at the /jrtp/ directory for test purposes.
@@ -17,7 +22,6 @@ defmodule JrtpBridgeExTest do
   @silly_http @test_http_root <> "tests/silly/"
   @webpage_title "<title>TESTING JRTP</title>"
 
-  Hub.start
 
   def connect_pinger do
     :timer.sleep 1000
@@ -33,10 +37,10 @@ defmodule JrtpBridgeExTest do
   end
 
   dispatch = CowboyRouter.compile [ {:_, [
-      {"/jrtp/[...]", JrtpBridge, %{
-        on_wait_start: (fn -> spawn(&JrtpBridgeExTest.connect_pinger/0) end),
+      {"/jrtp/[...]", HubRestApi, %{
+        on_wait_start: (fn -> spawn(&HubRestApiTest.connect_pinger/0) end),
         on_wait_end:   &(:erlang.exit(&1, :disconnected)),
-        json_provider_hook: &(JrtpBridgeExTest.json_provider_hook_test_fn/1),
+        json_provider_hook: &(HubRestApiTest.json_provider_hook_test_fn/1),
         webpage_title: @webpage_title
       }} ]} ]
 
@@ -121,8 +125,9 @@ defmodule JrtpBridgeExTest do
 
   @doc "Return term from decoded json body of the response"
   def jterm(resp) do
-    #{:ok, content_type} = header resp, "content-type"
-    JrtpBridge.json_to_erl(resp.body)
+    # {:ok, content_type} = header resp, "content-type"
+    {:ok, term} = JSX.decode(resp.body, [{:labels, :atom}])
+    Enum.into term, []
   end
 
   test "JSON interface to querying hub including versions and deltas" do

@@ -1,18 +1,18 @@
-JrtpBridge
+HubRestApi
 ==========
-
-"JSON/REST Transport Protocol" Bridge
 
 Implements a REST-based plugin for the Cowboy webserver that allows json-based transactions against hub for state.
 
 ## Usage
 
-JrtpBridge is plugged in as a handler for Cowboy.   Here is a simple example that serves up the entire Hub at /jrtp/.... , without options/callbacks.
+HubRestApi is a handler for Cowboy.   An example that serves up the entire Hub at /hub/.... on port 8080.
 
 ```elixir
 
+import Nerves.HubRestApi
+
 dispatch = :cowboy_router.compile [{:_,[
-    {"/jrtp/[...]", :jrtp_bridge, %{} }
+    {"/hub/[...]", HubRestApi, %{} }
 }]}]
 
 {:ok, _pid} = :cowboy.start_http :http, 10,
@@ -22,7 +22,7 @@ dispatch = :cowboy_router.compile [{:_,[
 
 ## Options
 
-JrtpBridge can also take takes a couple options in the options map, as follows:
+HubRestApi can also take takes a couple options in the options map, as follows:
 
 on_wait_start :: fn/0
 
@@ -35,13 +35,4 @@ Called with the result of on_wait_start, if exists, or false, if not.
 json_provider_hook :: fn/1
 
 Allows hooking the responses given by th json_provider and rfc7386_provider Takes a cowboy_req parameter, and returns a modified cowboy_req.
-
-webpage_title :: binary
-
-HTTP requests of Content-Type application/html webpage title will be set to this value
-
-firmware_acceptor :: module
-
-When a Content-Type of application/x-firmware is provided the firmware\_acceptor/2 method of the provided module will be called passing the _req_ and _state_ will be the paramaters.
-
 

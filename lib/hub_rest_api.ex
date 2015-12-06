@@ -1,7 +1,6 @@
-defmodule JrtpBridge do
-  @moduledoc """
-  JrtpBridge - JSON/REST Transport Protocol Bridge
+defmodule Nerves.HubRestApi do
 
+  @moduledoc """
   Supports the REST methodoy to access points on the Hub, using JSON as
   the notation of the state.
 
@@ -126,8 +125,7 @@ defmodule JrtpBridge do
   def content_types_accepted(req, state) do
     {[
       {{"application", "merge-patch+json", []}, :rfc7386_acceptor},
-      {{"application", "json", []}, :json_acceptor},
-      {{"application", "x-firmware", []}, :firmware_acceptor}
+      {{"application", "json", []}, :json_acceptor}
     ], req, state}
   end
 
@@ -162,15 +160,6 @@ defmodule JrtpBridge do
       _ ->
         {:ok, req} = CowboyReq.reply(400, [], req)
         {:halt, req, state}
-    end
-  end
-  
-  def firmware_acceptor(req, state) do
-    case Dict.get(state, :firmware_acceptor) do
-      nil ->
-        {:ok, req} = CowboyReq.reply(404, [], req)
-        {:halt, req, state}
-      fa -> fa.upload_acceptor(req, state)
     end
   end
 
@@ -218,14 +207,14 @@ defmodule JrtpBridge do
     end
   end
 
-  def erl_to_json(term) do
+  defp erl_to_json(term) do
     case JSX.encode(term, [{:space, 1}, {:indent, 2}]) do
       {:ok, json} -> json
       {:error, _} -> throw(:error)
     end
   end
 
-  def json_to_erl(json) do
+  defp json_to_erl(json) do
     case JSX.decode(json, [{:labels, :atom}]) do
       {:error, _} -> throw(:error)
       {:ok, erl} -> erl |> Enum.into []
