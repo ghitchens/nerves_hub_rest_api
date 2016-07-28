@@ -31,7 +31,7 @@ defmodule Nerves.HubRestApi do
 
   @doc false
   def allowed_methods(req, state) do
-    {["GET", "PUT", "POST"], req, state}
+    {["GET", "PUT", "POST", "DELETE"], req, state}
   end
 
   @doc false
@@ -160,6 +160,18 @@ defmodule Nerves.HubRestApi do
       _ ->
         {:ok, req} = CowboyReq.reply(400, [], req)
         {:halt, req, state}
+    end
+  end
+
+  # Handle DELETE method
+  def delete_resource(req, state) do
+    case Hub.request(request_path(req), nil, %{http_method: "DELETE"}) do
+      :ok ->
+        {:ok, req} = CowboyReq.reply(202, [], req)
+        {true, req, state}
+      _ ->
+        {:ok, req} = CowboyReq.reply(400, [], req)
+        {true, req, state}
     end
   end
 
